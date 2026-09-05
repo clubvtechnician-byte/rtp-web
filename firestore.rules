@@ -1,0 +1,30 @@
+rules_version = '2';
+
+// Dán toàn bộ nội dung file này vào:
+// Firebase Console → Firestore Database → tab "Rules" → Publish
+//
+// Chính sách: chỉ cho phép đọc/ghi khi đã đăng nhập (kể cả ẩn danh qua
+// Anonymous Auth mà app web đã bật sẵn trong firebaseManager.js). Điều này
+// ngăn người lạ trên Internet đọc/ghi tuỳ ý vào database chỉ bằng cách biết
+// projectId (vốn lộ ra công khai trong code JS phía client).
+//
+// Muốn siết chặt hơn nữa (ví dụ chỉ 1 nhóm nhân viên cụ thể mới được ghi):
+// thay Anonymous Auth bằng Firebase Auth có email/password hoặc custom claims,
+// rồi đổi điều kiện bên dưới cho phù hợp.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /sessions/{sessionId} {
+      allow read, write: if request.auth != null;
+
+      match /machines/{machineDocId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // Mặc định từ chối mọi collection khác không khai báo tường minh ở trên.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

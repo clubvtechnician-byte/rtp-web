@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>RTP OCR Scanner (Web)</title>
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+    <!-- ================= NỬA TRÊN: CAMERA ================= -->
+    <div id="cameraContainer">
+        <video id="video" playsinline autoplay muted></video>
+
+        <!-- Canvas ẩn dùng để chụp frame cho OCR (không hiển thị trực tiếp) -->
+        <canvas id="captureCanvas" hidden></canvas>
+
+        <!-- Ảnh tĩnh hiển thị khi "đóng băng" preview -->
+        <img id="frozenFrameImage" alt="" hidden />
+        <div id="frozenBorder" hidden></div>
+
+        <!-- Thanh header: tên file CSV + bộ đếm + nút kết thúc phiên -->
+        <div id="headerBar">
+            <div id="headerInfo">
+                <div id="tvCsvFileName">—</div>
+                <div id="tvScannedCount">Đã quét: 0 máy</div>
+                <div id="tvCloudStatus">☁ Firebase: chưa cấu hình</div>
+            </div>
+            <button id="btnEndSession">🛑 Kết thúc phiên</button>
+        </div>
+
+        <!-- Nút Flash -->
+        <button id="btnFlash" title="Bật/tắt đèn flash">💡</button>
+
+        <!-- Badge Machine number -->
+        <div id="badgeMachineNumber" hidden></div>
+
+        <!-- Dòng trạng thái -->
+        <div id="tvScanStatus">Đang khởi tạo camera…</div>
+
+        <!-- Overlay xin quyền camera -->
+        <div id="permissionOverlay" hidden>
+            <p>Ứng dụng cần quyền truy cập Camera để quét thông số máy.</p>
+            <button id="btnGrantPermission">Cấp quyền Camera</button>
+        </div>
+
+        <!-- Overlay loading khi tải model OCR -->
+        <div id="loadingOverlay" hidden>
+            <p>Đang tải bộ máy OCR (lần đầu có thể mất vài giây)…</p>
+        </div>
+    </div>
+
+    <!-- ================= NỬA DƯỚI: DỮ LIỆU & THAO TÁC ================= -->
+    <div id="dataPanel">
+
+        <label class="field-label" for="etMachineId">Machine ID (ZZ)</label>
+        <input id="etMachineId" type="text" inputmode="numeric" placeholder="Machine ID (ZZ)" />
+
+        <div class="row2">
+            <div class="col">
+                <label class="field-label" for="etParamX">Giá trị X (%)</label>
+                <input id="etParamX" type="text" inputmode="decimal" placeholder="Giá trị X (%)" />
+            </div>
+            <div class="col">
+                <label class="field-label" for="etParamY">Giá trị Y (%)</label>
+                <input id="etParamY" type="text" inputmode="decimal" placeholder="Giá trị Y (%)" />
+            </div>
+        </div>
+
+        <label class="field-label" for="etMaintenanceDate">Ngày bảo trì (DD/MM/YYYY)</label>
+        <input id="etMaintenanceDate" type="text" placeholder="Ngày bảo trì (DD/MM/YYYY)" />
+
+        <div class="row2">
+            <button id="btnRescan" class="btn btn-secondary">↺ Quét lại</button>
+            <button id="btnConfirm" class="btn btn-primary btn-wide">Tiếp tục quét ngày bảo trì ➔</button>
+        </div>
+
+        <div id="postSessionPanel" hidden>
+            <button id="btnShareCsv" class="btn btn-primary btn-full">Chia sẻ file CSV</button>
+            <button id="btnNewSession" class="btn btn-secondary btn-full">Tạo phiên làm việc mới</button>
+        </div>
+
+    </div>
+
+    <!-- Tesseract.js: OCR chạy hoàn toàn client-side (WASM), không cần server/API key -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+    <!-- Firebase (compat SDK — dùng API dạng firebase.xxx() cho đồng nhất với phần còn lại của code) -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+
+    <script src="js/firebaseConfig.js"></script>
+    <script src="js/firebaseManager.js"></script>
+    <script src="js/ocrParser.js"></script>
+    <script src="js/csvManager.js"></script>
+    <script src="js/cameraController.js"></script>
+    <script src="js/ocrEngine.js"></script>
+    <script src="js/util.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

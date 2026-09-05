@@ -1,0 +1,281 @@
+/* ==========================================================================
+   RTP OCR Scanner (Web) — giao diện chia đôi màn hình, theme tối giống bản Android
+   ========================================================================== */
+
+:root {
+    --black: #000000;
+    --white: #ffffff;
+    --primary: #1565c0;
+    --accent: #ffc107;
+    --header-bg: rgba(0, 0, 0, 0.8);
+    --badge-bg: rgba(255, 109, 0, 0.93);
+    --danger: #d32f2f;
+    --bottom-panel-bg: #121212;
+    --input-bg: #1e1e1e;
+    --input-stroke: #3a3a3a;
+    --text-primary: #ffffff;
+    --text-secondary: #b0b0b0;
+}
+
+* { box-sizing: border-box; }
+
+/* Thuộc tính [hidden] phải luôn thắng mọi display:flex/block đặt theo id/class,
+   nếu không các overlay (permission/loading) sẽ hiện đè lên nhau dù đã set hidden. */
+[hidden] { display: none !important; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bottom-panel-bg);
+    color: var(--text-primary);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overscroll-behavior: none;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+}
+
+/* ================= NỬA TRÊN: CAMERA ================= */
+
+#cameraContainer {
+    position: relative;
+    flex: 1 1 50%;
+    min-height: 0;
+    background: var(--black);
+    overflow: hidden;
+}
+
+#video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+#frozenFrameImage {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: var(--black);
+}
+
+#frozenBorder {
+    position: absolute;
+    inset: 0;
+    border: 4px solid var(--accent);
+    pointer-events: none;
+}
+
+#headerBar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: var(--header-bg);
+}
+
+#headerInfo {
+    flex: 1;
+    min-width: 0;
+}
+
+#tvCsvFileName {
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#tvScannedCount {
+    font-size: 12px;
+    color: var(--accent);
+}
+
+#tvCloudStatus {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+#tvCloudStatus.cloud-ok { color: #4caf50; }
+#tvCloudStatus.cloud-error { color: #ff8a65; }
+
+#btnEndSession {
+    flex-shrink: 0;
+    background: var(--danger);
+    color: var(--white);
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#btnFlash {
+    position: absolute;
+    top: 64px;
+    right: 10px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: var(--header-bg);
+    color: var(--white);
+    font-size: 18px;
+    cursor: pointer;
+    opacity: 0.55;
+}
+
+#badgeMachineNumber {
+    position: absolute;
+    top: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--badge-bg);
+    color: var(--white);
+    font-weight: 700;
+    font-size: 16px;
+    padding: 8px 16px;
+    border-radius: 24px;
+    border: 1px solid var(--white);
+    white-space: nowrap;
+}
+
+#tvScanStatus {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--header-bg);
+    color: var(--white);
+    text-align: center;
+    padding: 8px;
+    font-size: 13px;
+}
+
+#permissionOverlay,
+#loadingOverlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: rgba(0, 0, 0, 0.88);
+    text-align: center;
+    padding: 24px;
+}
+
+#btnGrantPermission {
+    background: var(--primary);
+    color: var(--white);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+/* ================= NỬA DƯỚI: DỮ LIỆU & THAO TÁC ================= */
+
+#dataPanel {
+    flex: 1 1 50%;
+    min-height: 0;
+    overflow-y: auto;
+    background: var(--bottom-panel-bg);
+    padding: 16px;
+}
+
+.field-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+#dataPanel input[type="text"] {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--input-stroke);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 16px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+}
+
+#dataPanel input::placeholder {
+    color: var(--text-secondary);
+}
+
+.row2 {
+    display: flex;
+    gap: 12px;
+}
+
+.row2 .col {
+    flex: 1;
+    min-width: 0;
+}
+
+.row2 > input,
+.row2 > .col {
+    margin-bottom: 14px;
+}
+
+.btn {
+    height: 52px;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: var(--white);
+}
+
+.btn-secondary {
+    background: var(--input-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--input-stroke);
+}
+
+.row2 .btn-secondary { flex: 1; }
+.row2 .btn-wide { flex: 2; }
+
+.btn-full {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+#postSessionPanel {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Màn hình rộng (tablet/desktop): chia trái-phải thay vì trên-dưới cho dễ thao tác */
+@media (min-width: 900px) {
+    body { flex-direction: row; }
+    #cameraContainer, #dataPanel { flex: 1 1 50%; height: 100%; }
+}
