@@ -153,6 +153,110 @@ body {
     white-space: nowrap;
 }
 
+/* ---- Thước ngắm: vùng duy nhất được đưa vào OCR ---- */
+
+#viewfinderLayer {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Chừa chỗ cho thanh header phía trên và nút chụp + dòng trạng thái phía dưới */
+    padding: 48px 0 92px;
+    pointer-events: none;
+}
+
+#viewfinder {
+    position: relative;
+    width: 280px;
+    height: 315px;
+    /* Máy màn hình nhỏ: co lại cho vừa, JS đo bằng getBoundingClientRect nên
+       vùng cắt luôn khớp với những gì người dùng nhìn thấy */
+    max-width: 88%;
+    max-height: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 6px;
+    box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.35);
+}
+
+.vf-corner {
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    border: 3px solid var(--accent);
+}
+
+.vf-tl { top: -2px; left: -2px; border-right: none; border-bottom: none; border-radius: 6px 0 0 0; }
+.vf-tr { top: -2px; right: -2px; border-left: none; border-bottom: none; border-radius: 0 6px 0 0; }
+.vf-bl { bottom: -2px; left: -2px; border-right: none; border-top: none; border-radius: 0 0 0 6px; }
+.vf-br { bottom: -2px; right: -2px; border-left: none; border-top: none; border-radius: 0 0 6px 0; }
+
+/* ---- Nút chụp ---- */
+
+#btnShutter {
+    position: absolute;
+    left: 50%;
+    bottom: 34px;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 60px;
+    padding: 0;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.85);
+    background: rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#btnShutterInner {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: var(--white);
+    transition: transform 0.1s ease, background 0.1s ease;
+}
+
+#btnShutter:active #btnShutterInner {
+    transform: scale(0.86);
+    background: var(--accent);
+}
+
+#btnShutter:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ---- Overlay khi đang đọc ảnh ---- */
+
+#processingOverlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: rgba(0, 0, 0, 0.72);
+    text-align: center;
+    padding: 24px;
+    font-size: 14px;
+}
+
+.spinner {
+    width: 34px;
+    height: 34px;
+    border: 3px solid rgba(255, 255, 255, 0.25);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
 #tvScanStatus {
     position: absolute;
     left: 0;
@@ -164,6 +268,9 @@ body {
     padding: 8px;
     font-size: 13px;
 }
+
+#tvScanStatus.status-error { color: #ff8a65; }
+#tvScanStatus.status-ok { color: #81c784; }
 
 #permissionOverlay,
 #loadingOverlay {

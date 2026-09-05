@@ -35,8 +35,29 @@
         <!-- Badge Machine number -->
         <div id="badgeMachineNumber" hidden></div>
 
+        <!-- Thước ngắm: chỉ vùng nằm trong khung này mới được đưa vào OCR -->
+        <div id="viewfinderLayer">
+            <div id="viewfinder">
+                <span class="vf-corner vf-tl"></span>
+                <span class="vf-corner vf-tr"></span>
+                <span class="vf-corner vf-bl"></span>
+                <span class="vf-corner vf-br"></span>
+            </div>
+        </div>
+
+        <!-- Nút Chụp -->
+        <button id="btnShutter" title="Chụp và đọc dữ liệu" hidden>
+            <span id="btnShutterInner"></span>
+        </button>
+
         <!-- Dòng trạng thái -->
         <div id="tvScanStatus">Đang khởi tạo camera…</div>
+
+        <!-- Overlay khi đang đọc ảnh -->
+        <div id="processingOverlay" hidden>
+            <div class="spinner"></div>
+            <p>Đang đọc dữ liệu từ ảnh…</p>
+        </div>
 
         <!-- Overlay xin quyền camera -->
         <div id="permissionOverlay" hidden>
@@ -71,8 +92,8 @@
         <input id="etMaintenanceDate" type="text" placeholder="Ngày bảo trì (DD/MM/YYYY)" />
 
         <div class="row2">
-            <button id="btnRescan" class="btn btn-secondary">↺ Quét lại</button>
-            <button id="btnConfirm" class="btn btn-primary btn-wide">Tiếp tục quét ngày bảo trì ➔</button>
+            <button id="btnRescan" class="btn btn-secondary">↺ Chụp lại</button>
+            <button id="btnConfirm" class="btn btn-primary btn-wide">Tiếp tục (Bước 2) ➔</button>
         </div>
 
         <div id="postSessionPanel" hidden>

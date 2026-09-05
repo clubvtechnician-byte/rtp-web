@@ -2,23 +2,31 @@
  * main.js
  * -----------------------------------------------------------------------
  * Điều phối toàn bộ máy trạng thái (State Machine) quét 2 bước / máy,
- * nối camera + OCR realtime + CSV manager với giao diện.
+ * nối camera + OCR + CSV manager với giao diện.
  *
- * Máy trạng thái (giống hệt bản Android — xem ScanStep.kt):
+ * Cách hoạt động (từ bản này): NGẮM → CHỤP → ĐỌC ẢNH.
+ * Người dùng canh phần cần đọc vào trong thước ngắm rồi bấm nút Chụp; ứng
+ * dụng cắt đúng vùng đó, làm sạch ảnh và chạy OCR đúng 1 lần. Cách này nhanh
+ * và chắc ăn hơn hẳn việc quét liên tục 30fps như trước — Tesseract.js (WASM)
+ * mất vài trăm ms tới ~2s cho mỗi khung hình, chạy liên tục vừa nóng máy vừa
+ * hay đọc trượt do khung hình rung/mờ.
  *
- *   STEP1_SCANNING --(bắt đủ X, Y, ZZ)--> STEP1_FROZEN
- *   STEP1_FROZEN --[Tiếp tục quét ngày bảo trì]--> STEP2_SCANNING
- *   STEP2_SCANNING --(bắt được ngày)--> STEP2_FROZEN
- *   STEP2_FROZEN --[Xác nhận & Lưu]--> ghi CSV, tăng bộ đếm, quay lại STEP1_SCANNING
- *   (*_FROZEN) --[Quét lại]--> *_SCANNING tương ứng (xoá dữ liệu bước đó)
- *   (bất kỳ) --[🛑 Kết thúc phiên]--> SESSION_ENDED --> hiện [Chia sẻ CSV] / [Phiên mới]
+ *   STEP1_AIMING --[📸 Chụp]--> đọc thông số --> STEP1_FROZEN
+ *   STEP1_FROZEN --[Tiếp tục]--> STEP2_AIMING
+ *   STEP2_AIMING --[📸 Chụp]--> đọc ngày bảo trì --> STEP2_FROZEN
+ *   STEP2_FROZEN --[Xác nhận & Lưu]--> ghi CSV, tăng bộ đếm, về STEP1_AIMING
+ *   (*_FROZEN) --[Chụp lại]--> *_AIMING tương ứng (xoá dữ liệu bước đó)
+ *   (bất kỳ) --[🛑 Kết thúc phiên]--> SESSION_ENDED --> [Chia sẻ CSV] / [Phiên mới]
+ *
+ * Nếu OCR không đọc được, ứng dụng vẫn giữ nguyên ảnh vừa chụp và cho phép
+ * nhập tay — người dùng đọc thẳng số trên ảnh đã đóng băng, không phải canh lại máy.
  * -----------------------------------------------------------------------
  */
 
 const ScanStep = Object.freeze({
-    STEP1_SCANNING: 'STEP1_SCANNING',
+    STEP1_AIMING: 'STEP1_AIMING',
     STEP1_FROZEN: 'STEP1_FROZEN',
-    STEP2_SCANNING: 'STEP2_SCANNING',
+    STEP2_AIMING: 'STEP2_AIMING',
     STEP2_FROZEN: 'STEP2_FROZEN',
     SESSION_ENDED: 'SESSION_ENDED'
 });
@@ -29,6 +37,8 @@ const ScanStep = Object.freeze({
 
     const videoEl = $('video');
     const captureCanvas = $('captureCanvas');
+    const viewfinderEl = $('viewfinder');
+    const viewfinderLayer = $('viewfinderLayer');
     const frozenImg = $('frozenFrameImage');
     const frozenBorder = $('frozenBorder');
     const badge = $('badgeMachineNumber');
@@ -37,6 +47,7 @@ const ScanStep = Object.freeze({
     const tvCloudStatus = $('tvCloudStatus');
     const tvScanStatus = $('tvScanStatus');
     const btnFlash = $('btnFlash');
+    const btnShutter = $('btnShutter');
     const btnEndSession = $('btnEndSession');
     const btnRescan = $('btnRescan');
     const btnConfirm = $('btnConfirm');
@@ -50,11 +61,13 @@ const ScanStep = Object.freeze({
     const permissionOverlay = $('permissionOverlay');
     const btnGrantPermission = $('btnGrantPermission');
     const loadingOverlay = $('loadingOverlay');
+    const processingOverlay = $('processingOverlay');
 
-    let currentStep = ScanStep.STEP1_SCANNING;
+    let currentStep = ScanStep.STEP1_AIMING;
     let scannedCount = 0;
     let activeMachineId = '';
     let firebaseSessionId = ''; // dùng chung tên file CSV làm session id trên Firestore
+    let isProcessing = false;   // chặn bấm Chụp chồng lên nhau khi đang đọc ảnh
 
     function pad2(n) { return String(n).padStart(2, '0'); }
     function nowScanTime() {
@@ -67,7 +80,7 @@ const ScanStep = Object.freeze({
     let listenersAttached = false;
 
     async function bootstrap() {
-        CameraController.init(videoEl, captureCanvas);
+        CameraController.init(videoEl, captureCanvas, viewfinderEl);
         if (!listenersAttached) {
             setupClickListeners();
             listenersAttached = true;
@@ -94,11 +107,6 @@ const ScanStep = Object.freeze({
 
         await initFirebaseSync();
         await beginNewSession();
-
-        OcrEngine.startLoop(
-            () => CameraController.captureFrame(),
-            (text) => handleOcrResult(text)
-        );
     }
 
     // ============================== ĐỒNG BỘ FIREBASE (tuỳ chọn) ==============================
@@ -136,12 +144,12 @@ const ScanStep = Object.freeze({
             firebaseSessionId = CsvManager.getCurrentFileName();
         }
         updateScannedCountUi();
-        currentStep = ScanStep.STEP1_SCANNING;
+        currentStep = ScanStep.STEP1_AIMING;
         clearAllFields();
         hideBadge();
         unfreezePreview();
         postSessionPanel.hidden = true;
-        btnConfirm.textContent = 'Tiếp tục quét ngày bảo trì ➔';
+        btnConfirm.textContent = 'Tiếp tục (Bước 2) ➔';
         updateStatusUi();
     }
 
@@ -159,54 +167,117 @@ const ScanStep = Object.freeze({
         return true;
     }
 
-    // ============================== XỬ LÝ KẾT QUẢ OCR ==============================
+    // ============================== CHỤP & ĐỌC ẢNH ==============================
 
-    function handleOcrResult(text) {
-        if (currentStep === ScanStep.STEP1_SCANNING) {
-            const result = OcrParser.parseStep1(text);
-            if (result) onStep1Captured(result.paramX, result.paramY, result.machineId);
-        } else if (currentStep === ScanStep.STEP2_SCANNING) {
-            const result = OcrParser.parseStep2(text);
-            if (result) onStep2Captured(result.maintenanceDateVi);
+    async function onShutterClicked() {
+        if (isProcessing) return;
+        if (currentStep !== ScanStep.STEP1_AIMING && currentStep !== ScanStep.STEP2_AIMING) return;
+        if (!OcrEngine.isReady()) {
+            alert('Bộ máy OCR chưa sẵn sàng, vui lòng đợi vài giây rồi thử lại.');
+            return;
         }
-        // STEP1_FROZEN / STEP2_FROZEN / SESSION_ENDED: bỏ qua kết quả frame này.
+
+        const shot = CameraController.captureShot();
+        if (!shot) {
+            alert('Chưa lấy được hình từ camera, vui lòng thử lại.');
+            return;
+        }
+
+        isProcessing = true;
+        HapticUtil.vibrateTick();
+        // Đóng băng ngay tấm vừa chụp để người dùng thấy đúng vùng đã được đọc
+        freezePreview(shot.previewDataUrl);
+        processingOverlay.hidden = false;
+        setShutterEnabled(false);
+
+        const capturedStep = currentStep;
+        try {
+            const result = await readShot(shot, capturedStep);
+            if (capturedStep === ScanStep.STEP1_AIMING) {
+                applyStep1Result(result);
+            } else {
+                applyStep2Result(result);
+            }
+        } catch (e) {
+            console.error('Lỗi khi đọc ảnh', e);
+            currentStep = capturedStep === ScanStep.STEP1_AIMING
+                ? ScanStep.STEP1_FROZEN
+                : ScanStep.STEP2_FROZEN;
+            setStatus('Lỗi khi đọc ảnh: ' + e.message + ' — nhập tay hoặc bấm Chụp lại.', 'status-error');
+            setActionButtonsEnabled(true);
+            setShutterVisible(false);
+        } finally {
+            processingOverlay.hidden = true;
+            isProcessing = false;
+        }
     }
 
-    function onStep1Captured(paramX, paramY, machineId) {
-        freezePreview();
-        etParamX.value = paramX;
-        etParamY.value = paramY;
-        etMachineId.value = machineId;
-        HapticUtil.vibrateTick();
+    /**
+     * Chạy OCR trên tấm ảnh vừa chụp. Thử 2 kiểu tiền xử lý:
+     *   1. auto-levels  — giữ được nét chữ, đúng cho đa số ảnh chụp màn hình
+     *   2. nhị phân hoá — dự phòng khi ảnh quá tối/loá khiến lượt 1 đọc trượt
+     * Chỉ chạy lượt 2 khi lượt 1 không bóc được dữ liệu, nên trường hợp thuận
+     * lợi vẫn chỉ tốn đúng 1 lần OCR.
+     */
+    async function readShot(shot, step) {
+        const parse = (text) => step === ScanStep.STEP1_AIMING
+            ? OcrParser.parseStep1(text)
+            : OcrParser.parseStep2(text);
+
+        for (const mode of ['levels', 'binary']) {
+            const prepared = CameraController.prepareForOcr(shot.crop, mode);
+            const text = await OcrEngine.recognize(prepared);
+            console.log(`[OCR/${mode}]`, text);
+            const parsed = parse(text);
+            if (parsed) return parsed;
+        }
+        return null;
+    }
+
+    function applyStep1Result(result) {
         currentStep = ScanStep.STEP1_FROZEN;
-        updateStatusUi();
+        if (result) {
+            etParamX.value = result.paramX;
+            etParamY.value = result.paramY;
+            etMachineId.value = result.machineId;
+            HapticUtil.vibrateConfirm();
+            setStatus('Đã đọc được thông số. Kiểm tra rồi bấm Tiếp tục.', 'status-ok');
+        } else {
+            setStatus('Không đọc được thông số — nhập tay theo ảnh, hoặc bấm Chụp lại.', 'status-error');
+        }
+        setActionButtonsEnabled(true);
+        setShutterVisible(false);
     }
 
-    function onStep2Captured(maintenanceDateVi) {
-        freezePreview();
-        etMaintenanceDate.value = maintenanceDateVi;
-        HapticUtil.vibrateTick();
+    function applyStep2Result(result) {
         currentStep = ScanStep.STEP2_FROZEN;
-        updateStatusUi();
+        if (result) {
+            etMaintenanceDate.value = result.maintenanceDateVi;
+            HapticUtil.vibrateConfirm();
+            setStatus('Đã đọc được ngày bảo trì. Kiểm tra rồi bấm Xác nhận.', 'status-ok');
+        } else {
+            setStatus('Không đọc được ngày bảo trì — nhập tay theo ảnh, hoặc bấm Chụp lại.', 'status-error');
+        }
+        setActionButtonsEnabled(true);
+        setShutterVisible(false);
     }
 
     // ============================== ĐÓNG BĂNG / MỞ LẠI PREVIEW ==============================
 
-    function freezePreview() {
-        OcrEngine.setPaused(true);
-        const dataUrl = CameraController.captureFreezeFrameDataUrl();
+    function freezePreview(dataUrl) {
         if (dataUrl) {
             frozenImg.src = dataUrl;
             frozenImg.hidden = false;
         }
         frozenBorder.hidden = false;
+        viewfinderLayer.hidden = true;
     }
 
     function unfreezePreview() {
         frozenImg.hidden = true;
         frozenImg.removeAttribute('src');
         frozenBorder.hidden = true;
-        OcrEngine.setPaused(false);
+        viewfinderLayer.hidden = false;
     }
 
     // ============================== SỰ KIỆN CLICK ==============================
@@ -219,6 +290,7 @@ const ScanStep = Object.freeze({
             btnFlash.style.opacity = on ? '1' : '0.55';
         });
 
+        btnShutter.addEventListener('click', onShutterClicked);
         btnEndSession.addEventListener('click', confirmEndSession);
         btnRescan.addEventListener('click', onRescanClicked);
         btnConfirm.addEventListener('click', onConfirmClicked);
@@ -231,12 +303,12 @@ const ScanStep = Object.freeze({
             etMachineId.value = '';
             etParamX.value = '';
             etParamY.value = '';
-            currentStep = ScanStep.STEP1_SCANNING;
+            currentStep = ScanStep.STEP1_AIMING;
             unfreezePreview();
             updateStatusUi();
         } else if (currentStep === ScanStep.STEP2_FROZEN) {
             etMaintenanceDate.value = '';
-            currentStep = ScanStep.STEP2_SCANNING;
+            currentStep = ScanStep.STEP2_AIMING;
             unfreezePreview();
             updateStatusUi();
         }
@@ -264,7 +336,7 @@ const ScanStep = Object.freeze({
         showBadge(machineId);
         etMaintenanceDate.value = '';
         btnConfirm.textContent = `Xác nhận & Lưu máy #${machineId}`;
-        currentStep = ScanStep.STEP2_SCANNING;
+        currentStep = ScanStep.STEP2_AIMING;
         unfreezePreview();
         updateStatusUi();
     }
@@ -302,11 +374,11 @@ const ScanStep = Object.freeze({
             });
         }
 
-        // Bước 3: dọn dẹp & quay về Bước 1 cho máy tiếp theo
+        // Dọn dẹp & quay về Bước 1 cho máy tiếp theo
         hideBadge();
         clearAllFields();
-        btnConfirm.textContent = 'Tiếp tục quét ngày bảo trì ➔';
-        currentStep = ScanStep.STEP1_SCANNING;
+        btnConfirm.textContent = 'Tiếp tục (Bước 2) ➔';
+        currentStep = ScanStep.STEP1_AIMING;
         unfreezePreview();
         updateStatusUi();
     }
@@ -324,7 +396,6 @@ const ScanStep = Object.freeze({
     function endSession() {
         CsvManager.endSession();
         currentStep = ScanStep.SESSION_ENDED;
-        OcrEngine.setPaused(true);
         hideBadge();
         postSessionPanel.hidden = false;
         updateStatusUi();
@@ -337,7 +408,7 @@ const ScanStep = Object.freeze({
         try {
             const result = await CsvManager.shareCsv();
             if (result === 'downloaded') {
-                tvScanStatus.textContent = 'Đã tải file CSV xuống thư mục Downloads của trình duyệt.';
+                setStatus('Đã tải file CSV xuống thư mục Downloads của trình duyệt.', 'status-ok');
             }
         } catch (e) {
             if (e.name !== 'AbortError') { // người dùng huỷ hộp thoại share -> bỏ qua, không báo lỗi
@@ -377,27 +448,46 @@ const ScanStep = Object.freeze({
         btnConfirm.style.opacity = enabled ? '1' : '0.5';
     }
 
+    function setShutterVisible(visible) {
+        btnShutter.hidden = !visible;
+        if (visible) setShutterEnabled(true);
+    }
+
+    function setShutterEnabled(enabled) {
+        btnShutter.disabled = !enabled;
+    }
+
+    function setStatus(text, cssClass) {
+        tvScanStatus.textContent = text;
+        tvScanStatus.className = cssClass || '';
+    }
+
     function updateStatusUi() {
         switch (currentStep) {
-            case ScanStep.STEP1_SCANNING:
-                tvScanStatus.textContent = 'Bước 1/2 — Đang quét thông số máy…';
+            case ScanStep.STEP1_AIMING:
+                setStatus('Bước 1/2 — Đưa thông số máy vào khung rồi bấm nút chụp.');
                 setActionButtonsEnabled(false);
+                setShutterVisible(true);
                 break;
             case ScanStep.STEP1_FROZEN:
-                tvScanStatus.textContent = 'Đã bắt được thông số. Kiểm tra và bấm Tiếp tục.';
+                setStatus('Đã đọc được thông số. Kiểm tra rồi bấm Tiếp tục.', 'status-ok');
                 setActionButtonsEnabled(true);
+                setShutterVisible(false);
                 break;
-            case ScanStep.STEP2_SCANNING:
-                tvScanStatus.textContent = `Bước 2/2 — Đang quét ngày bảo trì máy #${activeMachineId}…`;
+            case ScanStep.STEP2_AIMING:
+                setStatus(`Bước 2/2 — Đưa ngày bảo trì máy #${activeMachineId} vào khung rồi bấm nút chụp.`);
                 setActionButtonsEnabled(false);
+                setShutterVisible(true);
                 break;
             case ScanStep.STEP2_FROZEN:
-                tvScanStatus.textContent = 'Đã bắt được ngày bảo trì. Kiểm tra và bấm Xác nhận.';
+                setStatus('Đã đọc được ngày bảo trì. Kiểm tra rồi bấm Xác nhận.', 'status-ok');
                 setActionButtonsEnabled(true);
+                setShutterVisible(false);
                 break;
             case ScanStep.SESSION_ENDED:
-                tvScanStatus.textContent = 'Phiên làm việc đã kết thúc.';
+                setStatus('Phiên làm việc đã kết thúc.');
                 setActionButtonsEnabled(false);
+                setShutterVisible(false);
                 break;
         }
     }
@@ -406,7 +496,7 @@ const ScanStep = Object.freeze({
 
     window.addEventListener('beforeunload', () => {
         CameraController.release();
-        OcrEngine.stopLoop();
+        OcrEngine.terminate();
     });
 
     // Khởi động khi DOM sẵn sàng

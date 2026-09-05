@@ -70,14 +70,27 @@ const OcrParser = (() => {
         const windowText = lines.slice(zeroIdx + 1).join(' ');
         if (!windowText.trim()) return null;
 
-        const percentMatches = [...windowText.matchAll(PERCENT_TOKEN)].map(m => m[1]);
+        const percentMatches = [...windowText.matchAll(PERCENT_TOKEN)];
         if (percentMatches.length < 2) return null;
-        const paramX = percentMatches[0];
-        const paramY = percentMatches[1];
+        const paramX = percentMatches[0][1];
+        const paramY = percentMatches[1][1];
 
+        let machineId = null;
         const idMatch = windowText.match(MACHINE_ID_TOKEN);
-        if (!idMatch) return null;
-        const machineId = idMatch[1];
+        if (idMatch) {
+            machineId = idMatch[1];
+        } else {
+            // Dự phòng (riêng bản web): Tesseract rất hay đọc nhầm "$" thành
+            // "%", "S" hoặc "5" nên luật "số đứng trước $" trượt dù ảnh rõ.
+            // Khi KHÔNG tìm thấy "$" nào, lấy số nguyên đầu tiên nằm sau giá
+            // trị Y — đúng vị trí Machine ID trên màn hình máy.
+            // Nhánh này chỉ chạy khi luật gốc thất bại nên không đổi hành vi cũ.
+            const afterParamY = percentMatches[1];
+            const rest = windowText.slice(afterParamY.index + afterParamY[0].length);
+            const fallback = rest.match(/(\d{1,4})/);
+            if (fallback) machineId = fallback[1];
+        }
+        if (!machineId) return null;
 
         return { paramX, paramY, machineId };
     }
