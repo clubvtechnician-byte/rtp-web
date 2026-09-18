@@ -22,37 +22,38 @@ const ImageProcessing = (() => {
     let cvReady = false;
 
     /**
-     * Chờ OpenCV.js sẵn sàng. Dùng đúng hook chuẩn `cv.onRuntimeInitialized`
-     * của emscripten thay vì chỉ poll `cv.Mat` (poll đơn thuần không đủ tin
-     * cậy — quan sát thực tế trên iOS Safari bị timeout dù script đã tải
-     * xong, WASM vẫn đang compile/instantiate). Vẫn giữ poll làm phương án
-     * dự phòng, tăng timeout lên 45s cho lần tải đầu trên mạng di động.
+     * Chờ OpenCV.js sẵn sàng.
+     *
+     * QUAN TRỌNG: bản `@techstark/opencv-js` (dist/opencv.js) dùng UMD —
+     * khi tải qua thẻ <script> thường (không phải module), nó gán
+     * `window.cv = factory()`, và `factory()` trả về **1 Promise** (vì hàm
+     * khởi tạo lõi là `async function`), CHỨ KHÔNG PHẢI object cv dùng ngay
+     * được. Poll trực tiếp `cv.Mat` trên cái Promise đó sẽ không bao giờ
+     * đúng (Promise không có `.Mat`) — đây là nguyên nhân thật của lỗi
+     * timeout trên iOS và lỗi "không nhận diện được gì" âm thầm trên Android
+     * (đã xác nhận bằng cách đọc trực tiếp file build của package).
+     *
+     * Cách xử lý đúng: đợi `cv` xuất hiện (script tải xong), rồi `await`
+     * chính nó nếu là Promise, sau đó GHI ĐÈ lại `window.cv` bằng giá trị
+     * đã resolve — để toàn bộ code còn lại (`cv.Mat`, `cv.imread`...) dùng
+     * đúng object thật.
      */
     function waitForOpenCv(timeoutMs = 45000) {
         return new Promise((resolve, reject) => {
             const start = Date.now();
-            let settled = false;
-            const finish = () => {
-                if (settled) return;
-                settled = true;
-                cvReady = true;
-                resolve();
-            };
-
             (function poll() {
-                if (settled) return;
-                if (typeof cv !== 'undefined' && cv.Mat) {
-                    finish();
+                if (typeof cv !== 'undefined') {
+                    const maybePromise = cv && typeof cv.then === 'function' ? cv : Promise.resolve(cv);
+                    maybePromise.then((resolvedCv) => {
+                        window.cv = resolvedCv;
+                        if (!resolvedCv || !resolvedCv.Mat) {
+                            reject(new Error('OpenCV.js tải xong nhưng thiếu API Mat (bản build không tương thích)'));
+                            return;
+                        }
+                        cvReady = true;
+                        resolve();
+                    }).catch((e) => reject(new Error('OpenCV.js khởi tạo lỗi: ' + e.message)));
                     return;
-                }
-                if (typeof cv !== 'undefined' && !cv.Mat && typeof cv.onRuntimeInitialized !== 'function' && !cv.__hookedByApp) {
-                    // `cv` tồn tại nhưng WASM chưa init xong -> gắn hook chính thức.
-                    cv.__hookedByApp = true;
-                    const prev = cv.onRuntimeInitialized;
-                    cv.onRuntimeInitialized = () => {
-                        if (typeof prev === 'function') prev();
-                        finish();
-                    };
                 }
                 if (Date.now() - start > timeoutMs) {
                     reject(new Error('OpenCV.js không tải được (timeout) — kiểm tra kết nối mạng rồi thử lại'));
@@ -111,7 +112,7 @@ const ImageProcessing = (() => {
         // Bước 2: "lõi nét chữ" — opening (erode rồi dilate) để loại pixel
         // lẻ (dither 1-2px), sau đó dilate thêm 1 lần để tạo dung sai —
         // bất kỳ thành phần liên thông nào không chạm lõi này là rác.
-        const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2));
+        const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
         const core = new cv.Mat();
         cv.morphologyEx(inv, core, cv.MORPH_OPEN, kernel);
         const coreDilated = new cv.Mat();
@@ -180,7 +181,48 @@ const ImageProcessing = (() => {
             }
         }
         if (inBand && rows - y0 >= minRowHeight) bands.push({ y0, y1: rows });
-        return bands;
+
+        // Vệt loá/phản quang trên màn hình máy có thể nối liền nhiều dòng
+        // thật thành 1 khối cao bất thường (quan sát thực tế: 1 khối 777px
+        // gộp 8 dòng số liệu, làm hỏng hoàn toàn bước tách ký tự phía sau).
+        // Không dựa vào "trung vị các band khác" để biết đâu là bất thường
+        // (không đáng tin — bản thân các band header cũng cao thấp lộn xộn).
+        // Thay vào đó: quét MỌI band tìm valley cục bộ (thấp hơn hẳn mức
+        // "đỉnh điển hình" ngay trong chính band đó) để tách tiếp — band nào
+        // vốn đã sạch 1 dòng thì không có valley nào đạt ngưỡng, tự nhiên
+        // giữ nguyên không bị tách.
+        const final = [];
+        for (const band of bands) final.push(...splitByLocalMinima(rowSum, band, minRowHeight));
+        return final;
+    }
+
+    function splitByLocalMinima(rowSum, band, minRowHeight) {
+        const vals = [];
+        for (let y = band.y0; y < band.y1; y++) if (rowSum[y] > 0) vals.push(rowSum[y]);
+        if (vals.length === 0) return [band];
+        vals.sort((a, b) => a - b);
+        const peakRef = vals[Math.floor(vals.length * 0.8)]; // mức "đỉnh" điển hình (percentile 80)
+        const valleyThreshold = peakRef * 0.25;
+
+        const win = 3;
+        const splitPoints = [];
+        let lastSplit = band.y0;
+        for (let y = band.y0 + minRowHeight; y < band.y1 - minRowHeight; y++) {
+            if (rowSum[y] > valleyThreshold) continue;
+            if (y - lastSplit < minRowHeight) continue;
+            let isLocalMin = true;
+            for (let k = Math.max(band.y0, y - win); k <= Math.min(band.y1 - 1, y + win); k++) {
+                if (rowSum[k] < rowSum[y]) { isLocalMin = false; break; }
+            }
+            if (isLocalMin) { splitPoints.push(y); lastSplit = y; }
+        }
+        if (splitPoints.length === 0) return [band];
+
+        const result = [];
+        let prev = band.y0;
+        for (const sp of splitPoints) { result.push({ y0: prev, y1: sp }); prev = sp; }
+        result.push({ y0: prev, y1: band.y1 });
+        return result.filter((b) => b.y1 - b.y0 >= minRowHeight);
     }
 
     /**
@@ -240,12 +282,39 @@ const ImageProcessing = (() => {
     }
 
     /**
+     * Tính bounding box THẬT (theo pixel có chữ) của 1 ký tự bên trong dải
+     * cột [x0,x1) — không dùng nguyên chiều cao của band, vì band có thể
+     * cao hơn ký tự thật khá nhiều (dư khoảng trắng trên/dưới, hoặc do
+     * bước tách dòng chưa hoàn hảo) — nếu cứ dùng cả chiều cao band, ảnh
+     * ký tự bị kéo méo tỉ lệ nghiêm trọng trước khi đưa vào model.
+     */
+    function tightVerticalBounds(binMat, band, box) {
+        const cols = binMat.cols;
+        const data = binMat.data;
+        let top = -1, bottom = -1;
+        for (let y = band.y0; y < band.y1; y++) {
+            let hasInk = false;
+            const base = y * cols;
+            for (let x = box.x0; x < box.x1; x++) {
+                if (data[base + x] > 0) { hasInk = true; break; }
+            }
+            if (hasInk) {
+                if (top === -1) top = y;
+                bottom = y;
+            }
+        }
+        if (top === -1) return { y0: band.y0, y1: band.y1 };
+        return { y0: top, y1: bottom + 1 };
+    }
+
+    /**
      * Crop 1 ký tự từ binMat, pad về hình vuông rồi resize 64x64 —
      * trả về Float32Array 64*64 giá trị [0,1] (1 = nét chữ, 0 = nền),
      * đúng format input model (grayscale, chuẩn hoá 0-1).
      */
     function cropCharTo64(binMat, band, box) {
-        const rect = new cv.Rect(box.x0, band.y0, box.x1 - box.x0, band.y1 - band.y0);
+        const tightY = tightVerticalBounds(binMat, band, box);
+        const rect = new cv.Rect(box.x0, tightY.y0, box.x1 - box.x0, tightY.y1 - tightY.y0);
         const charMat = binMat.roi(rect);
 
         const side = Math.max(charMat.rows, charMat.cols);
@@ -261,12 +330,15 @@ const ImageProcessing = (() => {
         const resized = new cv.Mat();
         cv.resize(square, resized, new cv.Size(64, 64), 0, 0, cv.INTER_AREA);
 
-        // TODO: xác nhận lại cách chuẩn hoá pixel [0,1] khớp với lúc train
-        // model (best_model_64x64.pth / digit_model_64x64.onnx). Nếu độ
-        // chính xác thực tế thấp bất thường, thử đổi sang 0-255 thô hoặc
-        // chuẩn hoá mean/std khác ở đây.
+        // ĐÃ XÁC NHẬN bằng test thực nghiệm (debug-tool/test_isolated_classify.js):
+        // model được train theo quy ước NỀN TRẮNG (giá trị cao) / CHỮ ĐEN (giá
+        // trị thấp) — giống ảnh chụp giấy thật — chứ KHÔNG PHẢI "nền đen/chữ
+        // trắng" như binMat của ta (text=255 trắng sau threshold+dedither).
+        // Phải đảo ngược (1 - v/255) thì model mới đọc đúng — nếu không, mọi
+        // ký tự đều bị đoán sai thành "." hoặc "%" với confidence cao (đã
+        // observe thực tế, không phải giả thuyết).
         const out = new Float32Array(64 * 64);
-        for (let i = 0; i < out.length; i++) out[i] = resized.data[i] / 255;
+        for (let i = 0; i < out.length; i++) out[i] = 1 - resized.data[i] / 255;
 
         charMat.delete(); square.delete(); resized.delete();
         return out;

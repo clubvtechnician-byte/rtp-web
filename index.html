@@ -28,11 +28,12 @@
 
             <img id="frozenFrameImage" alt="" hidden />
             <div id="frozenBorder" hidden></div>
+            <button id="btnSavePhoto" hidden>💾 Lưu ảnh (debug)</button>
 
-            <!-- Khung ngắm: 2 đường ngang đánh dấu vùng cần canh màn hình vào giữa -->
+            <!-- Khung ngắm: dữ liệu nằm ở nửa bên phải màn hình máy, nên chỉ
+                 khoanh vùng nửa phải (x 50%-100%), không lấy full chiều rộng -->
             <svg id="guideOverlay" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <line x1="0" y1="30" x2="100" y2="30" />
-                <line x1="0" y1="70" x2="100" y2="70" />
+                <rect x="50" y="30" width="50" height="40" />
             </svg>
 
             <div id="headerBar">
@@ -118,16 +119,16 @@
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
 
-    <script src="js/firebaseConfig.js?v=3"></script>
-    <script src="js/firebaseManager.js?v=3"></script>
-    <script src="js/imageProcessing.js?v=3"></script>
-    <script src="js/digitClassifier.js?v=3"></script>
-    <script src="js/ocrParser.js?v=3"></script>
-    <script src="js/ocrEngine.js?v=3"></script>
-    <script src="js/csvManager.js?v=3"></script>
-    <script src="js/cameraController.js?v=3"></script>
-    <script src="js/dataView.js?v=3"></script>
-    <script src="js/util.js?v=3"></script>
-    <script src="js/main.js?v=3"></script>
+    <script src="js/firebaseConfig.js?v=4"></script>
+    <script src="js/firebaseManager.js?v=4"></script>
+    <script src="js/imageProcessing.js?v=4"></script>
+    <script src="js/digitClassifier.js?v=4"></script>
+    <script src="js/ocrParser.js?v=4"></script>
+    <script src="js/ocrEngine.js?v=4"></script>
+    <script src="js/csvManager.js?v=4"></script>
+    <script src="js/cameraController.js?v=4"></script>
+    <script src="js/dataView.js?v=4"></script>
+    <script src="js/util.js?v=4"></script>
+    <script src="js/main.js?v=4"></script>
 </body>
 </html>

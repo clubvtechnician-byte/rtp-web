@@ -82,7 +82,7 @@ body {
 
 #cameraContainer {
     position: relative;
-    flex: 1 1 50%;
+    flex: 3 1 0;
     min-height: 0;
     background: var(--black);
     overflow: hidden;
@@ -108,9 +108,10 @@ body {
     pointer-events: none;
 }
 
-#guideOverlay line {
+#guideOverlay rect {
     stroke: #4ade80;
-    stroke-width: 0.6;
+    stroke-width: 1.6;
+    fill: none;
     vector-effect: non-scaling-stroke;
 }
 
@@ -248,6 +249,19 @@ body {
     box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
 
+#btnSavePhoto {
+    position: absolute;
+    bottom: 46px;
+    right: 10px;
+    background: #333;
+    color: var(--white);
+    border: 1px solid var(--input-stroke);
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
 #permissionOverlay,
 #loadingOverlay {
     position: absolute;
@@ -278,10 +292,10 @@ body {
 /* ================= NỬA DƯỚI: DỮ LIỆU & THAO TÁC ================= */
 
 #dataPanel {
-    flex: 1 1 50%;
+    flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
-    background: var(--bottom-panel-bg);
+    background: rgba(18, 18, 18, 0.75);
     padding: 16px;
 }
 
@@ -418,5 +432,6 @@ body {
    Chỉ áp dụng cho nội dung BÊN TRONG tab Quét — tabBar luôn nằm ngang trên cùng. */
 @media (min-width: 900px) {
     #scanTabView { flex-direction: row; }
-    #cameraContainer, #dataPanel { flex: 1 1 50%; height: 100%; }
+    #cameraContainer { flex: 3 1 0; height: 100%; }
+    #dataPanel { flex: 1 1 0; height: 100%; }
 }

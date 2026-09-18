@@ -15,9 +15,14 @@
  */
 
 const OcrEngine = (() => {
-    // Tỉ lệ dải khung ngắm (khớp 2 đường ngang overlay trong CSS/SVG).
-    const GUIDE_BAND = { yStart: 0.30, yEnd: 0.70 };
     const TICK_INTERVAL_MS = 200;
+    // Camera điện thoại độ phân giải cao (>10MP) chụp cận màn hình LCD sẽ lộ
+    // rõ từng điểm ảnh của màn hình (hiệu ứng moiré/lưới chấm dày đặc) — đã
+    // xác nhận thực nghiệm điều này phá hỏng hoàn toàn threshold+segment nếu
+    // xử lý ở độ phân giải gốc. Luôn resize vùng crop về độ rộng chuẩn này
+    // trước khi threshold (downscale đóng vai trò lọc thông thấp, xoá nhiễu
+    // lưới chấm) — không upscale nếu crop đã nhỏ hơn.
+    const PROCESSING_TARGET_WIDTH = 700;
 
     let running = false;
     let paused = false;
@@ -34,16 +39,45 @@ const OcrEngine = (() => {
     function setLiveFilterEnabled(value) { liveFilterEnabled = value; }
     function isLiveFilterEnabled() { return liveFilterEnabled; }
 
-    /** Cắt frame về đúng dải khung ngắm, trả về canvas mới (dùng cho cả xử lý và live filter). */
+    /**
+     * Cắt frame về đúng vùng khung ngắm NGƯỜI DÙNG NHÌN THẤY trên màn hình.
+     *
+     * `<video>` dùng `object-fit: cover` để hiển thị đẹp (phóng to + cắt lề),
+     * nhưng canvas chụp từ videoWidth/videoHeight lại là khung hình GỐC chưa
+     * cắt của camera — 2 hệ toạ độ khác nhau. Phải bù ngược lại scale/crop
+     * của `cover` thì vùng cắt để xử lý mới đúng khớp với khung ngắm hiển thị
+     * (nếu không, model xử lý nhầm vùng khác hẳn so với cái nhân viên đang
+     * canh trên màn hình — nghi vấn chính khiến không đọc ra số trên ảnh thật).
+     */
     function cropToGuideBand(frameCanvas) {
-        const w = frameCanvas.width;
-        const h = frameCanvas.height;
-        const y0 = Math.round(h * GUIDE_BAND.yStart);
-        const y1 = Math.round(h * GUIDE_BAND.yEnd);
-        workCanvas.width = w;
-        workCanvas.height = y1 - y0;
+        const videoEl = document.getElementById('video');
+        const guideEl = document.getElementById('guideOverlay');
+        const vw = frameCanvas.width;
+        const vh = frameCanvas.height;
+
+        const videoRect = videoEl.getBoundingClientRect();
+        const guideRect = guideEl.getBoundingClientRect();
+
+        const scale = Math.max(videoRect.width / vw, videoRect.height / vh);
+        const originX = videoRect.left + (videoRect.width - vw * scale) / 2;
+        const originY = videoRect.top + (videoRect.height - vh * scale) / 2;
+
+        const sx = Math.max(0, Math.round((guideRect.left - originX) / scale));
+        const sy = Math.max(0, Math.round((guideRect.top - originY) / scale));
+        const sw = Math.min(vw - sx, Math.round(guideRect.width / scale));
+        const sh = Math.min(vh - sy, Math.round(guideRect.height / scale));
+
+        let outW = sw, outH = sh;
+        if (sw > PROCESSING_TARGET_WIDTH) {
+            const ratio = PROCESSING_TARGET_WIDTH / sw;
+            outW = PROCESSING_TARGET_WIDTH;
+            outH = Math.round(sh * ratio);
+        }
+
+        workCanvas.width = outW;
+        workCanvas.height = outH;
         const ctx = workCanvas.getContext('2d');
-        ctx.drawImage(frameCanvas, 0, y0, w, y1 - y0, 0, 0, w, y1 - y0);
+        ctx.drawImage(frameCanvas, sx, sy, sw, sh, 0, 0, outW, outH);
         return workCanvas;
     }
 
@@ -149,6 +183,6 @@ const OcrEngine = (() => {
     return {
         init, startLoop, stopLoop, setPaused, isPaused,
         setLiveFilterEnabled, isLiveFilterEnabled,
-        processFrame, GUIDE_BAND,
+        processFrame,
     };
 })();

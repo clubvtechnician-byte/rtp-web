@@ -32,6 +32,7 @@ const ScanStep = Object.freeze({
     const captureCanvas = $('captureCanvas');
     const frozenImg = $('frozenFrameImage');
     const frozenBorder = $('frozenBorder');
+    const btnSavePhoto = $('btnSavePhoto');
     const badge = $('badgeMachineNumber');
     const tvCsvFileName = $('tvCsvFileName');
     const tvScannedCount = $('tvScannedCount');
@@ -315,12 +316,26 @@ const ScanStep = Object.freeze({
             frozenImg.hidden = false;
         }
         frozenBorder.hidden = false;
+        btnSavePhoto.hidden = false;
+    }
+
+    /** Bản beta: cho tải ảnh gốc vừa chụp về để debug pipeline offline (xem README/tools/). */
+    function onSavePhotoClicked() {
+        if (!frozenImg.src) return;
+        const a = document.createElement('a');
+        a.href = frozenImg.src;
+        const stepLabel = currentStep === ScanStep.STEP2_FROZEN ? 'step2' : 'step1';
+        a.download = `debug_${stepLabel}_${Date.now()}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
     }
 
     function unfreezePreview() {
         frozenImg.hidden = true;
         frozenImg.removeAttribute('src');
         frozenBorder.hidden = true;
+        btnSavePhoto.hidden = true;
         OcrEngine.setPaused(false);
     }
 
@@ -335,6 +350,7 @@ const ScanStep = Object.freeze({
         });
 
         btnManualCapture.addEventListener('click', onManualCaptureClicked);
+        btnSavePhoto.addEventListener('click', onSavePhotoClicked);
         btnRetryLoad.addEventListener('click', async () => {
             const ok = await initOcrEngineWithRetry();
             if (ok && !engineStarted) await startScanningAfterEngineReady();
