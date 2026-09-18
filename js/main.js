@@ -54,6 +54,8 @@ const ScanStep = Object.freeze({
     const permissionOverlay = $('permissionOverlay');
     const btnGrantPermission = $('btnGrantPermission');
     const loadingOverlay = $('loadingOverlay');
+    const loadingText = $('loadingText');
+    const btnRetryLoad = $('btnRetryLoad');
 
     let currentStep = ScanStep.STEP1_SCANNING;
     let scannedCount = 0;
@@ -111,14 +113,11 @@ const ScanStep = Object.freeze({
 
         btnFlash.style.display = CameraController.isTorchSupported() ? '' : 'none';
 
-        loadingOverlay.hidden = false;
-        try {
-            await OcrEngine.init();
-        } catch (e) {
-            alert('Không thể khởi tạo bộ máy nhận diện: ' + e.message);
-        }
-        loadingOverlay.hidden = true;
+        const ok = await initOcrEngineWithRetry();
+        if (ok) await startScanningAfterEngineReady();
+    }
 
+    async function startScanningAfterEngineReady() {
         await initFirebaseSync();
         await beginNewSession();
 
@@ -129,6 +128,29 @@ const ScanStep = Object.freeze({
             (rows, step) => handleOcrResult(rows, step),
             (previewCanvas) => drawLiveFilter(previewCanvas)
         );
+    }
+
+    /**
+     * Khởi tạo OcrEngine (OpenCV.js + model số). Không dùng alert() chặn UI
+     * khi lỗi (quan sát thực tế trên iOS: alert() làm cảm giác app "đứng
+     * hình") — thay bằng thông báo + nút Thử lại ngay trong loadingOverlay.
+     */
+    async function initOcrEngineWithRetry() {
+        loadingOverlay.hidden = false;
+        btnRetryLoad.hidden = true;
+        loadingText.className = '';
+        loadingText.textContent = 'Đang tải model nhận diện (lần đầu có thể mất vài giây)…';
+        try {
+            await OcrEngine.init();
+            loadingOverlay.hidden = true;
+            return true;
+        } catch (e) {
+            console.error('Không thể khởi tạo bộ máy nhận diện', e);
+            loadingText.className = 'error';
+            loadingText.textContent = 'Không thể khởi tạo bộ máy nhận diện: ' + e.message;
+            btnRetryLoad.hidden = false;
+            return false;
+        }
     }
 
     function drawLiveFilter(previewCanvas) {
@@ -192,7 +214,18 @@ const ScanStep = Object.freeze({
 
     // ============================== XỬ LÝ KẾT QUẢ NHẬN DIỆN ==============================
 
+    // Bật để xem log dòng/độ tin cậy pipeline đọc được mỗi lần thử — hữu ích
+    // khi cần chẩn đoán tại sao không nhận diện ra số trên 1 ảnh thật cụ thể.
+    const DEBUG_LOG_ROWS = true;
+
+    function logRecognizedRows(label, rows) {
+        if (!DEBUG_LOG_ROWS) return;
+        if (!rows || rows.length === 0) { console.log(`[OCR ${label}] (không tách được dòng nào)`); return; }
+        console.log(`[OCR ${label}]`, rows.map((r) => `"${r.text}" (${(r.meanConfidence * 100).toFixed(0)}%)`));
+    }
+
     function handleOcrResult(rows, step) {
+        logRecognizedRows(step, rows);
         if (step === 'step1' && currentStep === ScanStep.STEP1_SCANNING) {
             const result = OcrParser.parseStep1(rows);
             if (result && result.allValid) onStep1Captured(result);
@@ -242,6 +275,7 @@ const ScanStep = Object.freeze({
             let result = null;
             try {
                 const rows = await OcrEngine.processFrame(frame, { tokenizeRows: false });
+                logRecognizedRows('step1-manual', rows);
                 result = OcrParser.parseStep1(rows);
             } catch (e) { console.error('Lỗi nhận diện khi chụp tay', e); }
             if (result && result.allValid) {
@@ -255,6 +289,7 @@ const ScanStep = Object.freeze({
             let result = null;
             try {
                 const rows = await OcrEngine.processFrame(frame, { tokenizeRows: true });
+                logRecognizedRows('step2-manual', rows);
                 for (const row of rows) {
                     result = OcrParser.parseStep2(row.tokens);
                     if (result) break;
@@ -300,6 +335,10 @@ const ScanStep = Object.freeze({
         });
 
         btnManualCapture.addEventListener('click', onManualCaptureClicked);
+        btnRetryLoad.addEventListener('click', async () => {
+            const ok = await initOcrEngineWithRetry();
+            if (ok && !engineStarted) await startScanningAfterEngineReady();
+        });
         btnEndSession.addEventListener('click', confirmEndSession);
         btnRescan.addEventListener('click', onRescanClicked);
         btnConfirm.addEventListener('click', onConfirmClicked);

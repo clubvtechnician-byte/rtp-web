@@ -262,7 +262,8 @@ body {
     padding: 24px;
 }
 
-#btnGrantPermission {
+#btnGrantPermission,
+#btnRetryLoad {
     background: var(--primary);
     color: var(--white);
     border: none;
@@ -271,6 +272,8 @@ body {
     font-size: 15px;
     cursor: pointer;
 }
+
+#loadingText.error { color: #ff8a65; }
 
 /* ================= NỬA DƯỚI: DỮ LIỆU & THAO TÁC ================= */
 

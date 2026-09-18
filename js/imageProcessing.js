@@ -21,20 +21,44 @@
 const ImageProcessing = (() => {
     let cvReady = false;
 
-    function waitForOpenCv(timeoutMs = 15000) {
+    /**
+     * Chờ OpenCV.js sẵn sàng. Dùng đúng hook chuẩn `cv.onRuntimeInitialized`
+     * của emscripten thay vì chỉ poll `cv.Mat` (poll đơn thuần không đủ tin
+     * cậy — quan sát thực tế trên iOS Safari bị timeout dù script đã tải
+     * xong, WASM vẫn đang compile/instantiate). Vẫn giữ poll làm phương án
+     * dự phòng, tăng timeout lên 45s cho lần tải đầu trên mạng di động.
+     */
+    function waitForOpenCv(timeoutMs = 45000) {
         return new Promise((resolve, reject) => {
             const start = Date.now();
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                cvReady = true;
+                resolve();
+            };
+
             (function poll() {
+                if (settled) return;
                 if (typeof cv !== 'undefined' && cv.Mat) {
-                    cvReady = true;
-                    resolve();
+                    finish();
                     return;
+                }
+                if (typeof cv !== 'undefined' && !cv.Mat && typeof cv.onRuntimeInitialized !== 'function' && !cv.__hookedByApp) {
+                    // `cv` tồn tại nhưng WASM chưa init xong -> gắn hook chính thức.
+                    cv.__hookedByApp = true;
+                    const prev = cv.onRuntimeInitialized;
+                    cv.onRuntimeInitialized = () => {
+                        if (typeof prev === 'function') prev();
+                        finish();
+                    };
                 }
                 if (Date.now() - start > timeoutMs) {
-                    reject(new Error('OpenCV.js không tải được (timeout)'));
+                    reject(new Error('OpenCV.js không tải được (timeout) — kiểm tra kết nối mạng rồi thử lại'));
                     return;
                 }
-                setTimeout(poll, 100);
+                setTimeout(poll, 150);
             })();
         });
     }
@@ -141,7 +165,10 @@ const ImageProcessing = (() => {
             for (let x = 0; x < cols; x++) sum += data[base + x] > 0 ? 1 : 0;
             rowSum[y] = sum;
         }
-        const threshold = 1; // >=1 pixel trắng coi là có chữ trên dòng đó
+        // Ngưỡng theo tỉ lệ chiều rộng (không dùng "1 pixel là tính có chữ")
+        // để chống nhiễu moiré/JPEG còn sót lại sau dedither — vài pixel lẻ
+        // trôi nổi không đủ để nối 2 dòng thật lại thành 1 khối.
+        const threshold = Math.max(2, Math.round(cols * 0.01));
         const bands = [];
         let inBand = false, y0 = 0;
         for (let y = 0; y < rows; y++) {
@@ -174,11 +201,14 @@ const ImageProcessing = (() => {
             }
             colSum[x] = sum;
         }
-        // Tìm các dải cột có chữ (ký tự), rồi gom theo khoảng cách.
+        // Tìm các dải cột có chữ (ký tự), rồi gom theo khoảng cách. Cùng lý do
+        // chống nhiễu như segmentRows — không dùng "1 pixel là tính có chữ".
+        const bandHeight = band.y1 - band.y0;
+        const colThreshold = Math.max(2, Math.round(bandHeight * 0.05));
         const charBoxes = [];
         let inChar = false, x0 = 0;
         for (let x = 0; x < cols; x++) {
-            const active = colSum[x] >= 1;
+            const active = colSum[x] >= colThreshold;
             if (active && !inChar) { inChar = true; x0 = x; }
             if (!active && inChar) {
                 inChar = false;

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>V Club Audit Scanner</title>
-    <link rel="stylesheet" href="css/style.css?v=3" />
+    <link rel="stylesheet" href="css/style.css?v=4" />
 </head>
 <body>
 
@@ -61,7 +61,8 @@
             </div>
 
             <div id="loadingOverlay" hidden>
-                <p>Đang tải model nhận diện (lần đầu có thể mất vài giây)…</p>
+                <p id="loadingText">Đang tải model nhận diện (lần đầu có thể mất vài giây)…</p>
+                <button id="btnRetryLoad" hidden>Thử lại</button>
             </div>
         </div>
 
@@ -117,16 +118,16 @@
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
 
-    <script src="js/firebaseConfig.js?v=2"></script>
-    <script src="js/firebaseManager.js?v=2"></script>
-    <script src="js/imageProcessing.js?v=2"></script>
-    <script src="js/digitClassifier.js?v=2"></script>
-    <script src="js/ocrParser.js?v=2"></script>
-    <script src="js/ocrEngine.js?v=2"></script>
-    <script src="js/csvManager.js?v=2"></script>
-    <script src="js/cameraController.js?v=2"></script>
-    <script src="js/dataView.js?v=2"></script>
-    <script src="js/util.js?v=2"></script>
-    <script src="js/main.js?v=2"></script>
+    <script src="js/firebaseConfig.js?v=3"></script>
+    <script src="js/firebaseManager.js?v=3"></script>
+    <script src="js/imageProcessing.js?v=3"></script>
+    <script src="js/digitClassifier.js?v=3"></script>
+    <script src="js/ocrParser.js?v=3"></script>
+    <script src="js/ocrEngine.js?v=3"></script>
+    <script src="js/csvManager.js?v=3"></script>
+    <script src="js/cameraController.js?v=3"></script>
+    <script src="js/dataView.js?v=3"></script>
+    <script src="js/util.js?v=3"></script>
+    <script src="js/main.js?v=3"></script>
 </body>
 </html>
