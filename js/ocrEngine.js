@@ -51,7 +51,14 @@ const OcrEngine = (() => {
      */
     function cropToGuideBand(frameCanvas) {
         const videoEl = document.getElementById('video');
-        const guideEl = document.getElementById('guideOverlay');
+        // QUAN TRỌNG: phải lấy rect của thẻ <rect id="guideRect"> BÊN TRONG
+        // svg, không phải thẻ <svg id="guideOverlay"> — svg cha phủ toàn bộ
+        // camera (inset:0) nên getBoundingClientRect() của nó luôn bằng cả
+        // khung hình, không phải đúng khung xanh nửa-phải hiển thị. Lấy nhầm
+        // phần tử này khiến pipeline xử lý CẢ khung hình thay vì đúng vùng
+        // khung ngắm — đã xác nhận đây là nguyên nhân không đọc ra số trên
+        // ảnh thật dù ảnh chụp rất sạch.
+        const guideEl = document.getElementById('guideRect');
         const vw = frameCanvas.width;
         const vh = frameCanvas.height;
 
