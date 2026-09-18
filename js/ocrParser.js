@@ -1,115 +1,126 @@
 /**
  * ocrParser.js
  * -----------------------------------------------------------------------
- * Bộ phân tích Regex cho 2 màn hình OCR của máy (port 1-1 logic từ
- * ScreenParser.kt / DateFormatter.kt của bản Android).
+ * Bóc tách dữ liệu từ kết quả đã nhận diện theo DÒNG/TOKEN (không còn dùng
+ * regex trên text OCR tổng quát như bản Tesseract cũ).
  *
- * BƯỚC 1: tìm dòng "0.000%"/"0%" cuối cùng trong văn bản OCR, sau đó lấy
- *         2 giá trị % kế tiếp làm Param X / Param Y, và số nguyên đứng
- *         ngay trước dấu "$" làm Machine ID (ZZ).
+ * BƯỚC 1 (màn Audit) — anchor-relative theo ký tự "$" (đã validate trên
+ * ảnh thật): dòng chứa "$" làm mốc → mốc-1 = Machine No, mốc-2 = RTP2,
+ * mốc-3 = RTP1. Không tìm được dòng "$" → coi như thất bại toàn bộ, đẩy
+ * qua xác nhận tay.
  *
- * BƯỚC 2: tìm chuỗi "[Thứ] [Ngày] [Tháng] [Năm] [Giờ:Phút:Giây]" rồi quy
- *         đổi sang định dạng Việt Nam DD/MM/YYYY.
+ * BƯỚC 2 (màn ngày) — chỉ đọc NGÀY + NĂM bằng model số (model tháng chưa
+ * có, để Giai đoạn 2). Trong dòng ngày có nhiều token xen lẫn chữ (thứ,
+ * tên tháng) mà model không đọc được (confidence thấp) — lọc lấy token
+ * số có confidence cao: token 4 chữ số = năm, token 1-2 chữ số đứng
+ * TRƯỚC token năm (theo thứ tự trái->phải) = ngày.
  * -----------------------------------------------------------------------
  */
 
 const OcrParser = (() => {
+    const RTP_MIN = 80, RTP_MAX = 99;
+    const MACHINE_NO_MIN = 0, MACHINE_NO_MAX = 900;
+    const ROW_CONFIDENCE_OK = 0.6; // dưới ngưỡng này -> hạ confidence tổng
 
-    // Dòng phần trăm bằng 0: "0%", "0.0%", "0.000%"...
-    const ZERO_PERCENT_LINE = /^0(\.0+)?\s*%$/;
-
-    // Một cụm phần trăm bất kỳ, ví dụ "92.734%"
-    const PERCENT_TOKEN = /(\d{1,3}(?:\.\d+)?)\s*%/g;
-
-    // Số nguyên đứng ngay trước dấu "$", ví dụ "12$"
-    const MACHINE_ID_TOKEN = /(\d{1,4})\s*\$/;
-
-    // "Mon 23 Mar 2026 07:50:05" (không phân biệt hoa thường)
-    const MAINTENANCE_DATE_REGEX =
-        /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\.?\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/i;
-
-    const MONTH_MAP = {
-        jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-        jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
-    };
-
-    /** Quy đổi ngày/tháng chữ/năm sang chuỗi "DD/MM/YYYY", hoặc null nếu không hợp lệ. */
-    function toVietnameseDate(day, monthAbbrEn, year) {
-        const dayNum = parseInt(day, 10);
-        const monthNum = MONTH_MAP[monthAbbrEn.trim().toLowerCase()];
-        const yearNum = parseInt(year, 10);
-
-        if (!monthNum || isNaN(dayNum) || isNaN(yearNum)) return null;
-        if (dayNum < 1 || dayNum > 31 || yearNum < 1970) return null;
-
-        const dd = String(dayNum).padStart(2, '0');
-        const mm = String(monthNum).padStart(2, '0');
-        return `${dd}/${mm}/${yearNum}`;
+    /** Chèn dấu chấm khi model không đọc được "." — coi phần nguyên luôn 2 chữ số (RTP 80-99). */
+    function fixMissingDecimalForRtp(digitsOnly) {
+        if (digitsOnly.length <= 2) return { value: Number(digitsOnly), corrected: false };
+        const intPart = digitsOnly.slice(0, 2);
+        const fracPart = digitsOnly.slice(2);
+        return { value: Number(`${intPart}.${fracPart}`), corrected: true };
     }
 
     /**
-     * @param {string} rawText toàn bộ text OCR nhận diện được từ 1 frame (giữ nguyên xuống dòng)
-     * @returns {{paramX: string, paramY: string, machineId: string} | null}
+     * @param {string} rowText chuỗi ký tự đã ghép của 1 dòng, ví dụ "93.358%", "1", "$0.01"
+     * @returns {{numeric: number|null, hasDollar: boolean, autoCorrected: boolean}}
      */
-    function parseStep1(rawText) {
-        if (!rawText || !rawText.trim()) return null;
+    function parseNumericRow(rowText) {
+        const hasDollar = rowText.includes('$');
+        const digitsOnly = rowText.replace(/[^0-9]/g, '');
+        if (!digitsOnly) return { numeric: null, hasDollar, autoCorrected: false };
 
-        const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-        // Tìm vị trí dòng "0%"/"0.000%" CUỐI CÙNG trong toàn bộ văn bản
-        let zeroIdx = -1;
-        for (let i = 0; i < lines.length; i++) {
-            if (ZERO_PERCENT_LINE.test(lines[i])) {
-                zeroIdx = i;
-            }
+        if (rowText.includes('.')) {
+            const numMatch = rowText.match(/[0-9]+\.[0-9]+/);
+            return { numeric: numMatch ? Number(numMatch[0]) : null, hasDollar, autoCorrected: false };
         }
-        if (zeroIdx === -1) return null;
-
-        // Gom các dòng phía sau dòng 0% lại thành 1 cụm để quét theo cửa sổ,
-        // vì layout OCR đôi khi tách/dính dòng khác với văn bản gốc.
-        const windowText = lines.slice(zeroIdx + 1).join(' ');
-        if (!windowText.trim()) return null;
-
-        const percentMatches = [...windowText.matchAll(PERCENT_TOKEN)];
-        if (percentMatches.length < 2) return null;
-        const paramX = percentMatches[0][1];
-        const paramY = percentMatches[1][1];
-
-        let machineId = null;
-        const idMatch = windowText.match(MACHINE_ID_TOKEN);
-        if (idMatch) {
-            machineId = idMatch[1];
-        } else {
-            // Dự phòng (riêng bản web): Tesseract rất hay đọc nhầm "$" thành
-            // "%", "S" hoặc "5" nên luật "số đứng trước $" trượt dù ảnh rõ.
-            // Khi KHÔNG tìm thấy "$" nào, lấy số nguyên đầu tiên nằm sau giá
-            // trị Y — đúng vị trí Machine ID trên màn hình máy.
-            // Nhánh này chỉ chạy khi luật gốc thất bại nên không đổi hành vi cũ.
-            const afterParamY = percentMatches[1];
-            const rest = windowText.slice(afterParamY.index + afterParamY[0].length);
-            const fallback = rest.match(/(\d{1,4})/);
-            if (fallback) machineId = fallback[1];
-        }
-        if (!machineId) return null;
-
-        return { paramX, paramY, machineId };
+        return { numeric: Number(digitsOnly), hasDollar, autoCorrected: false };
     }
 
     /**
-     * @param {string} rawText toàn bộ text OCR nhận diện được từ 1 frame
-     * @returns {{maintenanceDateVi: string} | null}
+     * @param {{text: string, meanConfidence: number}[]} rows danh sách dòng đã nhận diện, thứ tự trên->dưới
+     * @returns {null | {
+     *   machineNo: number, rtp1: number, rtp2: number,
+     *   confidence: {machineNo:number, rtp1:number, rtp2:number},
+     *   autoCorrected: {rtp1:boolean, rtp2:boolean}
+     * }}
      */
-    function parseStep2(rawText) {
-        if (!rawText || !rawText.trim()) return null;
-        const match = rawText.match(MAINTENANCE_DATE_REGEX);
-        if (!match) return null;
+    function parseStep1(rows) {
+        if (!rows || rows.length === 0) return null;
 
-        const [, day, month, year] = match; // bỏ giờ:phút:giây theo đúng đặc tả
-        const viDate = toVietnameseDate(day, month, year);
-        if (!viDate) return null;
+        const dollarIdx = rows.findIndex((r) => r.text.includes('$'));
+        if (dollarIdx < 3) return null; // không đủ 3 dòng phía trên mốc
 
-        return { maintenanceDateVi: viDate };
+        const machineRow = rows[dollarIdx - 1];
+        const rtp2Row = rows[dollarIdx - 2];
+        const rtp1Row = rows[dollarIdx - 3];
+
+        const machineDigits = machineRow.text.replace(/[^0-9]/g, '');
+        if (!machineDigits) return null;
+        const machineNo = Number(machineDigits);
+
+        const rtp1Fallback = !rtp1Row.text.includes('.') && rtp1Row.text.replace(/[^0-9]/g, '').length > 2;
+        const rtp2Fallback = !rtp2Row.text.includes('.') && rtp2Row.text.replace(/[^0-9]/g, '').length > 2;
+
+        const rtp1Digits = rtp1Row.text.replace(/[^0-9]/g, '');
+        const rtp2Digits = rtp2Row.text.replace(/[^0-9]/g, '');
+        const rtp1 = rtp1Fallback
+            ? fixMissingDecimalForRtp(rtp1Digits).value
+            : Number((rtp1Row.text.match(/[0-9]+\.[0-9]+/) || [rtp1Digits])[0]);
+        const rtp2 = rtp2Fallback
+            ? fixMissingDecimalForRtp(rtp2Digits).value
+            : Number((rtp2Row.text.match(/[0-9]+\.[0-9]+/) || [rtp2Digits])[0]);
+
+        if ([machineNo, rtp1, rtp2].some((v) => Number.isNaN(v))) return null;
+
+        const machineNoValid = machineNo >= MACHINE_NO_MIN && machineNo <= MACHINE_NO_MAX;
+        const rtp1Valid = rtp1 >= RTP_MIN && rtp1 <= RTP_MAX;
+        const rtp2Valid = rtp2 >= RTP_MIN && rtp2 <= RTP_MAX;
+
+        return {
+            machineNo, rtp1, rtp2,
+            confidence: {
+                machineNo: machineNoValid ? machineRow.meanConfidence : 0,
+                rtp1: rtp1Valid ? rtp1Row.meanConfidence : 0,
+                rtp2: rtp2Valid ? rtp2Row.meanConfidence : 0,
+            },
+            autoCorrected: { rtp1: rtp1Fallback, rtp2: rtp2Fallback },
+            allValid: machineNoValid && rtp1Valid && rtp2Valid,
+        };
     }
 
-    return { parseStep1, parseStep2, toVietnameseDate };
+    /**
+     * @param {{text: string, meanConfidence: number}[]} tokens token trên dòng ngày, thứ tự trái->phải
+     * @returns {null | {day: number, year: number}}
+     */
+    function parseStep2(tokens) {
+        if (!tokens || tokens.length === 0) return null;
+
+        const reliableNumeric = tokens
+            .map((t, idx) => ({ ...t, idx, digitsOnly: t.text.replace(/[^0-9]/g, '') }))
+            .filter((t) => t.meanConfidence >= ROW_CONFIDENCE_OK && t.digitsOnly.length === t.text.length && t.digitsOnly.length > 0);
+
+        const yearToken = reliableNumeric.find((t) => t.digitsOnly.length === 4);
+        if (!yearToken) return null;
+
+        const dayToken = reliableNumeric.find((t) => t.idx < yearToken.idx && t.digitsOnly.length <= 2);
+        if (!dayToken) return null;
+
+        const day = Number(dayToken.digitsOnly);
+        const year = Number(yearToken.digitsOnly);
+        if (day < 1 || day > 31) return null;
+
+        return { day, year };
+    }
+
+    return { parseStep1, parseStep2, parseNumericRow, RTP_MIN, RTP_MAX, MACHINE_NO_MIN, MACHINE_NO_MAX };
 })();

@@ -40,6 +40,44 @@ body {
     height: 100dvh;
 }
 
+/* ================= TAB BAR ================= */
+
+#tabBar {
+    display: flex;
+    flex-shrink: 0;
+    background: #0a0a0a;
+    border-bottom: 1px solid var(--input-stroke);
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 12px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.tab-btn.active {
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+}
+
+#dataTabView {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+#scanTabView {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
 /* ================= NỬA TRÊN: CAMERA ================= */
 
 #cameraContainer {
@@ -50,11 +88,30 @@ body {
     overflow: hidden;
 }
 
-#video {
+#video, #liveFilterCanvas {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
+}
+
+#liveFilterCanvas {
+    position: absolute;
+    inset: 0;
+}
+
+#guideOverlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#guideOverlay line {
+    stroke: #4ade80;
+    stroke-width: 0.6;
+    vector-effect: non-scaling-stroke;
 }
 
 #frozenFrameImage {
@@ -111,6 +168,16 @@ body {
 #tvCloudStatus.cloud-ok { color: #4caf50; }
 #tvCloudStatus.cloud-error { color: #ff8a65; }
 
+#liveFilterToggle {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
 #btnEndSession {
     flex-shrink: 0;
     background: var(--danger);
@@ -153,110 +220,6 @@ body {
     white-space: nowrap;
 }
 
-/* ---- Thước ngắm: vùng duy nhất được đưa vào OCR ---- */
-
-#viewfinderLayer {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    /* Chừa chỗ cho thanh header phía trên và nút chụp + dòng trạng thái phía dưới */
-    padding: 48px 0 92px;
-    pointer-events: none;
-}
-
-#viewfinder {
-    position: relative;
-    width: 280px;
-    height: 315px;
-    /* Máy màn hình nhỏ: co lại cho vừa, JS đo bằng getBoundingClientRect nên
-       vùng cắt luôn khớp với những gì người dùng nhìn thấy */
-    max-width: 88%;
-    max-height: 100%;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 6px;
-    box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.35);
-}
-
-.vf-corner {
-    position: absolute;
-    width: 26px;
-    height: 26px;
-    border: 3px solid var(--accent);
-}
-
-.vf-tl { top: -2px; left: -2px; border-right: none; border-bottom: none; border-radius: 6px 0 0 0; }
-.vf-tr { top: -2px; right: -2px; border-left: none; border-bottom: none; border-radius: 0 6px 0 0; }
-.vf-bl { bottom: -2px; left: -2px; border-right: none; border-top: none; border-radius: 0 0 0 6px; }
-.vf-br { bottom: -2px; right: -2px; border-left: none; border-top: none; border-radius: 0 0 6px 0; }
-
-/* ---- Nút chụp ---- */
-
-#btnShutter {
-    position: absolute;
-    left: 50%;
-    bottom: 34px;
-    transform: translateX(-50%);
-    width: 60px;
-    height: 60px;
-    padding: 0;
-    border-radius: 50%;
-    border: 3px solid rgba(255, 255, 255, 0.85);
-    background: rgba(0, 0, 0, 0.35);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-#btnShutterInner {
-    width: 46px;
-    height: 46px;
-    border-radius: 50%;
-    background: var(--white);
-    transition: transform 0.1s ease, background 0.1s ease;
-}
-
-#btnShutter:active #btnShutterInner {
-    transform: scale(0.86);
-    background: var(--accent);
-}
-
-#btnShutter:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-/* ---- Overlay khi đang đọc ảnh ---- */
-
-#processingOverlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-    background: rgba(0, 0, 0, 0.72);
-    text-align: center;
-    padding: 24px;
-    font-size: 14px;
-}
-
-.spinner {
-    width: 34px;
-    height: 34px;
-    border: 3px solid rgba(255, 255, 255, 0.25);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
 #tvScanStatus {
     position: absolute;
     left: 0;
@@ -269,8 +232,21 @@ body {
     font-size: 13px;
 }
 
-#tvScanStatus.status-error { color: #ff8a65; }
-#tvScanStatus.status-ok { color: #81c784; }
+#btnManualCapture {
+    position: absolute;
+    bottom: 46px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--primary);
+    color: var(--white);
+    border: none;
+    border-radius: 24px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
 
 #permissionOverlay,
 #loadingOverlay {
@@ -343,6 +319,60 @@ body {
     margin-bottom: 14px;
 }
 
+.row3 {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.row3 input, .row3 select {
+    flex: 1;
+    min-width: 0;
+    background: var(--input-bg);
+    border: 1px solid var(--input-stroke);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 15px;
+    padding: 10px 8px;
+}
+
+.status-text {
+    color: var(--text-secondary);
+    text-align: center;
+    margin-top: 40px;
+}
+
+.status-text.error {
+    color: #ff8a65;
+}
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.data-table th,
+.data-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--input-stroke);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.data-table th {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.auto-corrected {
+    color: var(--accent);
+}
+
 .btn {
     height: 52px;
     border: none;
@@ -381,8 +411,9 @@ body {
     flex-direction: column;
 }
 
-/* Màn hình rộng (tablet/desktop): chia trái-phải thay vì trên-dưới cho dễ thao tác */
+/* Màn hình rộng (tablet/desktop): chia trái-phải thay vì trên-dưới cho dễ thao tác.
+   Chỉ áp dụng cho nội dung BÊN TRONG tab Quét — tabBar luôn nằm ngang trên cùng. */
 @media (min-width: 900px) {
-    body { flex-direction: row; }
+    #scanTabView { flex-direction: row; }
     #cameraContainer, #dataPanel { flex: 1 1 50%; height: 100%; }
 }

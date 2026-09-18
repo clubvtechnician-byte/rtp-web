@@ -3,121 +3,130 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>RTP OCR Scanner (Web)</title>
-    <link rel="stylesheet" href="css/style.css" />
+    <title>V Club Audit Scanner</title>
+    <link rel="stylesheet" href="css/style.css?v=3" />
 </head>
 <body>
 
-    <!-- ================= NỬA TRÊN: CAMERA ================= -->
-    <div id="cameraContainer">
-        <video id="video" playsinline autoplay muted></video>
+    <nav id="tabBar">
+        <button id="tabBtnData" class="tab-btn">Dữ liệu</button>
+        <button id="tabBtnScan" class="tab-btn active">Quét</button>
+    </nav>
 
-        <!-- Canvas ẩn dùng để chụp frame cho OCR (không hiển thị trực tiếp) -->
-        <canvas id="captureCanvas" hidden></canvas>
+    <!-- ================= TAB: DỮ LIỆU ================= -->
+    <div id="dataTabView" hidden></div>
 
-        <!-- Ảnh tĩnh hiển thị khi "đóng băng" preview -->
-        <img id="frozenFrameImage" alt="" hidden />
-        <div id="frozenBorder" hidden></div>
+    <!-- ================= TAB: QUÉT ================= -->
+    <div id="scanTabView">
 
-        <!-- Thanh header: tên file CSV + bộ đếm + nút kết thúc phiên -->
-        <div id="headerBar">
-            <div id="headerInfo">
-                <div id="tvCsvFileName">—</div>
-                <div id="tvScannedCount">Đã quét: 0 máy</div>
-                <div id="tvCloudStatus">☁ Firebase: chưa cấu hình</div>
+        <!-- NỬA TRÊN: CAMERA -->
+        <div id="cameraContainer">
+            <video id="video" playsinline autoplay muted></video>
+            <canvas id="liveFilterCanvas" hidden></canvas>
+
+            <canvas id="captureCanvas" hidden></canvas>
+
+            <img id="frozenFrameImage" alt="" hidden />
+            <div id="frozenBorder" hidden></div>
+
+            <!-- Khung ngắm: 2 đường ngang đánh dấu vùng cần canh màn hình vào giữa -->
+            <svg id="guideOverlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <line x1="0" y1="30" x2="100" y2="30" />
+                <line x1="0" y1="70" x2="100" y2="70" />
+            </svg>
+
+            <div id="headerBar">
+                <div id="headerInfo">
+                    <div id="tvCsvFileName">—</div>
+                    <div id="tvScannedCount">Đã quét: 0 máy</div>
+                    <div id="tvCloudStatus">☁ Firebase: chưa cấu hình</div>
+                </div>
+                <label id="liveFilterToggle" title="Xem trước ảnh đã lọc nền (tuỳ chọn)">
+                    <input type="checkbox" id="chkLiveFilter" /> Bộ lọc
+                </label>
+                <button id="btnEndSession">🛑 Kết thúc phiên</button>
             </div>
-            <button id="btnEndSession">🛑 Kết thúc phiên</button>
-        </div>
 
-        <!-- Nút Flash -->
-        <button id="btnFlash" title="Bật/tắt đèn flash">💡</button>
+            <button id="btnFlash" title="Bật/tắt đèn flash">💡</button>
 
-        <!-- Badge Machine number -->
-        <div id="badgeMachineNumber" hidden></div>
+            <div id="badgeMachineNumber" hidden></div>
 
-        <!-- Thước ngắm: chỉ vùng nằm trong khung này mới được đưa vào OCR -->
-        <div id="viewfinderLayer">
-            <div id="viewfinder">
-                <span class="vf-corner vf-tl"></span>
-                <span class="vf-corner vf-tr"></span>
-                <span class="vf-corner vf-bl"></span>
-                <span class="vf-corner vf-br"></span>
+            <div id="tvScanStatus">Đang khởi tạo camera…</div>
+
+            <button id="btnManualCapture" hidden>📸 Chụp tay</button>
+
+            <div id="permissionOverlay" hidden>
+                <p>Ứng dụng cần quyền truy cập Camera để quét thông số máy.</p>
+                <button id="btnGrantPermission">Cấp quyền Camera</button>
+            </div>
+
+            <div id="loadingOverlay" hidden>
+                <p>Đang tải model nhận diện (lần đầu có thể mất vài giây)…</p>
             </div>
         </div>
 
-        <!-- Nút Chụp -->
-        <button id="btnShutter" title="Chụp và đọc dữ liệu" hidden>
-            <span id="btnShutterInner"></span>
-        </button>
+        <!-- NỬA DƯỚI: DỮ LIỆU & THAO TÁC -->
+        <div id="dataPanel">
 
-        <!-- Dòng trạng thái -->
-        <div id="tvScanStatus">Đang khởi tạo camera…</div>
+            <label class="field-label" for="etMachineId">Machine No</label>
+            <input id="etMachineId" type="text" inputmode="numeric" placeholder="Machine No" />
 
-        <!-- Overlay khi đang đọc ảnh -->
-        <div id="processingOverlay" hidden>
-            <div class="spinner"></div>
-            <p>Đang đọc dữ liệu từ ảnh…</p>
-        </div>
+            <div class="row2">
+                <div class="col">
+                    <label class="field-label" for="etParamX">RTP1 (%)</label>
+                    <input id="etParamX" type="text" inputmode="decimal" placeholder="RTP1 (%)" />
+                </div>
+                <div class="col">
+                    <label class="field-label" for="etParamY">RTP2 (%)</label>
+                    <input id="etParamY" type="text" inputmode="decimal" placeholder="RTP2 (%)" />
+                </div>
+            </div>
 
-        <!-- Overlay xin quyền camera -->
-        <div id="permissionOverlay" hidden>
-            <p>Ứng dụng cần quyền truy cập Camera để quét thông số máy.</p>
-            <button id="btnGrantPermission">Cấp quyền Camera</button>
-        </div>
+            <label class="field-label">Ngày Clear RAM</label>
+            <div class="row3">
+                <input id="etDay" type="text" inputmode="numeric" placeholder="Ngày" />
+                <select id="selMonth">
+                    <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+                    <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+                    <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+                    <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+                </select>
+                <input id="etYear" type="text" inputmode="numeric" placeholder="Năm" />
+            </div>
 
-        <!-- Overlay loading khi tải model OCR -->
-        <div id="loadingOverlay" hidden>
-            <p>Đang tải bộ máy OCR (lần đầu có thể mất vài giây)…</p>
+            <div class="row2">
+                <button id="btnRescan" class="btn btn-secondary">↺ Quét lại</button>
+                <button id="btnConfirm" class="btn btn-primary btn-wide">Tiếp tục quét ngày Clear RAM ➔</button>
+            </div>
+
+            <div id="postSessionPanel" hidden>
+                <button id="btnShareCsv" class="btn btn-primary btn-full">Chia sẻ file CSV</button>
+                <button id="btnNewSession" class="btn btn-secondary btn-full">Tạo phiên làm việc mới</button>
+            </div>
+
         </div>
     </div>
 
-    <!-- ================= NỬA DƯỚI: DỮ LIỆU & THAO TÁC ================= -->
-    <div id="dataPanel">
+    <!-- OpenCV.js: threshold + dedither + tách dòng/ký tự, chạy WASM client-side -->
+    <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@1.4.10/dist/opencv.js"></script>
+    <!-- onnxruntime-web: chạy model digit_model_64x64.onnx client-side -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
 
-        <label class="field-label" for="etMachineId">Machine ID (ZZ)</label>
-        <input id="etMachineId" type="text" inputmode="numeric" placeholder="Machine ID (ZZ)" />
-
-        <div class="row2">
-            <div class="col">
-                <label class="field-label" for="etParamX">Giá trị X (%)</label>
-                <input id="etParamX" type="text" inputmode="decimal" placeholder="Giá trị X (%)" />
-            </div>
-            <div class="col">
-                <label class="field-label" for="etParamY">Giá trị Y (%)</label>
-                <input id="etParamY" type="text" inputmode="decimal" placeholder="Giá trị Y (%)" />
-            </div>
-        </div>
-
-        <label class="field-label" for="etMaintenanceDate">Ngày bảo trì (DD/MM/YYYY)</label>
-        <input id="etMaintenanceDate" type="text" placeholder="Ngày bảo trì (DD/MM/YYYY)" />
-
-        <div class="row2">
-            <button id="btnRescan" class="btn btn-secondary">↺ Chụp lại</button>
-            <button id="btnConfirm" class="btn btn-primary btn-wide">Tiếp tục (Bước 2) ➔</button>
-        </div>
-
-        <div id="postSessionPanel" hidden>
-            <button id="btnShareCsv" class="btn btn-primary btn-full">Chia sẻ file CSV</button>
-            <button id="btnNewSession" class="btn btn-secondary btn-full">Tạo phiên làm việc mới</button>
-        </div>
-
-    </div>
-
-    <!-- Tesseract.js: OCR chạy hoàn toàn client-side (WASM), không cần server/API key -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-
-    <!-- Firebase (compat SDK — dùng API dạng firebase.xxx() cho đồng nhất với phần còn lại của code) -->
+    <!-- Firebase (compat SDK): Realtime Database + Anonymous Auth -->
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
 
-    <script src="js/firebaseConfig.js"></script>
-    <script src="js/firebaseManager.js"></script>
-    <script src="js/ocrParser.js"></script>
-    <script src="js/csvManager.js"></script>
-    <script src="js/cameraController.js"></script>
-    <script src="js/ocrEngine.js"></script>
-    <script src="js/util.js"></script>
-    <script src="js/main.js"></script>
+    <script src="js/firebaseConfig.js?v=2"></script>
+    <script src="js/firebaseManager.js?v=2"></script>
+    <script src="js/imageProcessing.js?v=2"></script>
+    <script src="js/digitClassifier.js?v=2"></script>
+    <script src="js/ocrParser.js?v=2"></script>
+    <script src="js/ocrEngine.js?v=2"></script>
+    <script src="js/csvManager.js?v=2"></script>
+    <script src="js/cameraController.js?v=2"></script>
+    <script src="js/dataView.js?v=2"></script>
+    <script src="js/util.js?v=2"></script>
+    <script src="js/main.js?v=2"></script>
 </body>
 </html>

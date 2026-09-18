@@ -20,7 +20,7 @@
  */
 
 const CsvManager = (() => {
-    const CSV_HEADER = 'Machine_ID,Param_X,Param_Y,Maintenance_Date,Scan_Time';
+    const CSV_HEADER = 'Machine_No,RTP1,RTP2,Clear_RAM_Date,Scan_Time';
     const STORAGE_KEY = 'rtp_ocr_current_session';
     const SUPPORTS_FS_ACCESS = 'showSaveFilePicker' in window;
 
@@ -49,7 +49,7 @@ const CsvManager = (() => {
     }
 
     function recordToRow(record) {
-        return [record.machineId, record.paramX, record.paramY, record.maintenanceDate, record.scanTime]
+        return [record.machineNo, record.rtp1, record.rtp2, record.ramClearDateStr, record.scanTime]
             .map(escapeCsv).join(',');
     }
 

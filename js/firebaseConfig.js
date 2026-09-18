@@ -1,20 +1,15 @@
 /**
  * firebaseConfig.js
  * -----------------------------------------------------------------------
- * Config project Firebase thật (dự án "ocr-rtp") — đã điền, không cần sửa
- * gì thêm trừ khi bạn đổi sang project Firebase khác.
- *
- * Lưu ý bảo mật: các giá trị này (apiKey, projectId...) CHỈ dùng để định
- * danh project với Firebase, không phải bí mật tuyệt đối như API key server
- * — nhưng bảo mật thật sự nằm ở Firestore Security Rules (xem file
- * `firestore.rules` cùng thư mục gốc repo) + Anonymous Auth bắt buộc.
- * KHÔNG tắt Firestore Rules / để rules "allow read, write: if true" khi
- * đã public repo lên GitHub.
+ * Config project Firebase "ocr-rtp" (Realtime Database, region asia-southeast1).
+ * apiKey ở đây KHÔNG phải bí mật cần giấu — bảo mật thật sự nằm ở
+ * Realtime Database Rules (Firebase Console -> Realtime Database -> Rules).
  * -----------------------------------------------------------------------
  */
 const FIREBASE_CONFIG = {
     apiKey: "AIzaSyCsq5-3_KVxngvhogfJACE4w2Jl-PtqMeo",
     authDomain: "ocr-rtp.firebaseapp.com",
+    databaseURL: "https://ocr-rtp-default-rtdb.asia-southeast1.firebasedatabase.app",
     projectId: "ocr-rtp",
     storageBucket: "ocr-rtp.firebasestorage.app",
     messagingSenderId: "508550086071",
