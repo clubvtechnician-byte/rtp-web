@@ -30,27 +30,62 @@ const CameraController = (() => {
      * property JS (không chỉ attribute HTML) vì Safari đôi khi chỉ tôn
      * trọng property lúc runtime, thiếu nó autoplay có thể bị chặn im lặng.
      */
+    const diagLog = [];
+    function logDiag(msg) {
+        const line = `${((performance.now()) / 1000).toFixed(2)}s: ${msg}`;
+        diagLog.push(line);
+        console.log('[CameraDiag]', line);
+    }
+
     async function startCamera() {
+        diagLog.length = 0;
+        logDiag('bắt đầu getUserMedia');
         stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: { ideal: 'environment' } },
             audio: false
         });
+        logDiag('getUserMedia thành công, stream.active=' + stream.active);
+
         videoEl.muted = true;
         videoEl.playsInline = true;
+
+        videoEl.addEventListener('loadedmetadata', () => logDiag(`loadedmetadata (${videoEl.videoWidth}x${videoEl.videoHeight})`));
+        videoEl.addEventListener('playing', () => logDiag('playing event'));
+        videoEl.addEventListener('error', (e) => logDiag('video error: ' + (videoEl.error ? videoEl.error.message : e)));
+        videoEl.addEventListener('stalled', () => logDiag('stalled event'));
+        videoEl.addEventListener('suspend', () => logDiag('suspend event'));
+
         videoEl.srcObject = stream;
         try {
             await videoEl.play();
+            logDiag('play() resolved');
         } catch (e) {
-            console.error('videoEl.play() bị từ chối, thử lại sau tương tác người dùng', e);
+            logDiag('play() bị từ chối: ' + e.message);
         }
 
         track = stream.getVideoTracks()[0];
+        logDiag(`track: readyState=${track.readyState} muted=${track.muted} enabled=${track.enabled} label=${track.label}`);
         try {
             const capabilities = track.getCapabilities ? track.getCapabilities() : {};
             torchSupported = !!capabilities.torch;
         } catch (e) {
             torchSupported = false;
         }
+    }
+
+    /** Chẩn đoán trạng thái camera hiện tại — dùng khi video không hiện hình dù stream đã "chạy". */
+    function getDiagnostics() {
+        if (!videoEl) return 'videoEl chưa init';
+        const lines = [
+            `videoWidth=${videoEl.videoWidth} videoHeight=${videoEl.videoHeight}`,
+            `readyState=${videoEl.readyState} paused=${videoEl.paused} muted=${videoEl.muted}`,
+            `currentTime=${videoEl.currentTime.toFixed(2)}`,
+            track ? `track: readyState=${track.readyState} muted=${track.muted} enabled=${track.enabled}` : 'track=null',
+            stream ? `stream.active=${stream.active}` : 'stream=null',
+            '--- log ---',
+            ...diagLog,
+        ];
+        return lines.join('\n');
     }
 
     function isTorchSupported() { return torchSupported; }
@@ -112,6 +147,7 @@ const CameraController = (() => {
         toggleTorch,
         captureFrame,
         captureFreezeFrameDataUrl,
+        getDiagnostics,
         release
     };
 })();

@@ -40,6 +40,7 @@ const ScanStep = Object.freeze({
     const tvScanStatus = $('tvScanStatus');
     const btnFlash = $('btnFlash');
     const btnManualCapture = $('btnManualCapture');
+    const btnCameraDiag = $('btnCameraDiag');
     const btnEndSession = $('btnEndSession');
     const btnRescan = $('btnRescan');
     const btnConfirm = $('btnConfirm');
@@ -350,6 +351,9 @@ const ScanStep = Object.freeze({
         });
 
         btnManualCapture.addEventListener('click', onManualCaptureClicked);
+        btnCameraDiag.addEventListener('click', () => {
+            alert(CameraController.getDiagnostics());
+        });
         btnSavePhoto.addEventListener('click', onSavePhotoClicked);
         btnRetryLoad.addEventListener('click', async () => {
             const ok = await initOcrEngineWithRetry();
