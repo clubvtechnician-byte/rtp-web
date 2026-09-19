@@ -19,18 +19,30 @@ const CameraController = (() => {
         captureCanvas = hiddenCanvasElement;
     }
 
-    /** Mở camera sau (environment) — phù hợp để soi vào màn hình máy. */
+    /**
+     * Mở camera sau (environment) — phù hợp để soi vào màn hình máy.
+     *
+     * QUAN TRỌNG (iOS Safari): kết hợp `width`/`height` ideal cùng lúc với
+     * `facingMode` từng bị báo là gây màn hình đen dù stream vẫn "chạy"
+     * (WebKit bug 176843 — getUserMedia results in black screen on iPhone).
+     * Chỉ xin `facingMode`, để trình duyệt tự chọn độ phân giải, tránh
+     * thương lượng constraint phức tạp. Cũng set `muted`/`playsInline` qua
+     * property JS (không chỉ attribute HTML) vì Safari đôi khi chỉ tôn
+     * trọng property lúc runtime, thiếu nó autoplay có thể bị chặn im lặng.
+     */
     async function startCamera() {
         stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: { ideal: 'environment' },
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            },
+            video: { facingMode: { ideal: 'environment' } },
             audio: false
         });
+        videoEl.muted = true;
+        videoEl.playsInline = true;
         videoEl.srcObject = stream;
-        await videoEl.play();
+        try {
+            await videoEl.play();
+        } catch (e) {
+            console.error('videoEl.play() bị từ chối, thử lại sau tương tác người dùng', e);
+        }
 
         track = stream.getVideoTracks()[0];
         try {
