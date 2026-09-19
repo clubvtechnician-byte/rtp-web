@@ -19,6 +19,27 @@ const CameraController = (() => {
         captureCanvas = hiddenCanvasElement;
     }
 
+    /** Thử play() vài lần liên tiếp (cách nhau ngắn) trước khi bỏ cuộc — chống lỗi thoáng qua. */
+    async function playWithRetry(maxAttempts = 3) {
+        for (let i = 0; i < maxAttempts; i++) {
+            try {
+                await videoEl.play();
+                return;
+            } catch (e) {
+                logDiag(`play() thử ${i + 1}/${maxAttempts} lỗi: ${e.message}`);
+                if (i < maxAttempts - 1) await new Promise((r) => setTimeout(r, 300));
+            }
+        }
+        throw new Error('play() thất bại sau ' + maxAttempts + ' lần thử');
+    }
+
+    const diagLog = [];
+    function logDiag(msg) {
+        const line = `${((performance.now()) / 1000).toFixed(2)}s: ${msg}`;
+        diagLog.push(line);
+        console.log('[CameraDiag]', line);
+    }
+
     /**
      * Mở camera sau (environment) — phù hợp để soi vào màn hình máy.
      *
@@ -30,13 +51,6 @@ const CameraController = (() => {
      * property JS (không chỉ attribute HTML) vì Safari đôi khi chỉ tôn
      * trọng property lúc runtime, thiếu nó autoplay có thể bị chặn im lặng.
      */
-    const diagLog = [];
-    function logDiag(msg) {
-        const line = `${((performance.now()) / 1000).toFixed(2)}s: ${msg}`;
-        diagLog.push(line);
-        console.log('[CameraDiag]', line);
-    }
-
     async function startCamera() {
         diagLog.length = 0;
         logDiag('bắt đầu getUserMedia');
@@ -55,9 +69,27 @@ const CameraController = (() => {
         videoEl.addEventListener('stalled', () => logDiag('stalled event'));
         videoEl.addEventListener('suspend', () => logDiag('suspend event'));
 
+        // iOS Safari huỷ play() đang chờ (AbortError) nếu tab bị chuyển nền/
+        // khoá màn hình đúng lúc đó — quan sát thực tế: play() treo gần 1
+        // phút rồi bị "The operation was aborted", video đen vĩnh viễn vì
+        // trước đây chỉ gọi play() đúng 1 lần, không có cơ chế thử lại. Giờ
+        // tự động phát lại mỗi khi tab quay lại foreground.
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && videoEl.srcObject && videoEl.paused) {
+                logDiag('tab quay lại foreground, thử play() lại');
+                videoEl.play().then(() => logDiag('play() lại thành công')).catch((e) => logDiag('play() lại vẫn lỗi: ' + e.message));
+            }
+        });
+        window.addEventListener('pageshow', () => {
+            if (videoEl.srcObject && videoEl.paused) {
+                logDiag('pageshow, thử play() lại');
+                videoEl.play().catch(() => {});
+            }
+        });
+
         videoEl.srcObject = stream;
         try {
-            await videoEl.play();
+            await playWithRetry();
             logDiag('play() resolved');
         } catch (e) {
             logDiag('play() bị từ chối: ' + e.message);
