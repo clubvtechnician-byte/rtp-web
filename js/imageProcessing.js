@@ -88,8 +88,10 @@ const ImageProcessing = (() => {
     }
 
     /**
-     * Threshold + dedither đầy đủ, trả về Mat nhị phân (text=255 trắng,
-     * nền=0 đen) đã tẩy hạt dither. CALLER PHẢI tự .delete() Mat trả về.
+     * Threshold + dedither — dùng để TÁCH VỊ TRÍ dòng/ký tự (segmentRows,
+     * segmentCharsIntoTokens, tightVerticalBounds), KHÔNG dùng làm ảnh đưa
+     * vào model nữa (model mới train trên ảnh xám gốc, xem cropCharForClassifier).
+     * Trả về { binMat, grayMat } — CALLER PHẢI tự .delete() cả 2 Mat.
      */
     function thresholdAndDedither(srcCanvas) {
         const src = cv.imread(srcCanvas);
@@ -143,11 +145,16 @@ const ImageProcessing = (() => {
             }
         }
 
-        src.delete(); gray.delete(); bin.delete(); inv.delete();
+        src.delete(); bin.delete(); inv.delete();
         kernel.delete(); core.delete(); coreDilated.delete(); dilateKernel.delete();
         labels.delete(); stats.delete(); centroids.delete();
 
-        return cleaned; // text=255 trắng trên nền đen, caller tự .delete()
+        // Trả về cả bản nhị phân (dùng để TÁCH VỊ TRÍ dòng/ký tự — việc "tìm
+        // chữ ở đâu" model không tự làm được) LẪN bản xám gốc chưa threshold
+        // (dùng để CẮT ảnh đưa vào model — đã xác nhận thực nghiệm model mới
+        // train trên ảnh xám thật, không phải ảnh nhị phân — xem
+        // cropCharForClassifier). Caller tự .delete() cả 2.
+        return { binMat: cleaned, grayMat: gray };
     }
 
     /**
@@ -308,37 +315,38 @@ const ImageProcessing = (() => {
     }
 
     /**
-     * Crop 1 ký tự từ binMat, pad về hình vuông rồi resize 64x64 —
-     * trả về Float32Array 64*64 giá trị [0,1] (1 = nét chữ, 0 = nền),
-     * đúng format input model (grayscale, chuẩn hoá 0-1).
+     * Crop 1 ký tự để đưa vào model mới (`digit_model.onnx`, 32x32).
+     *
+     * ĐÃ XÁC NHẬN bằng cách đối chiếu trực tiếp với ảnh training thật (crop
+     * theo manifest.csv, so khớp pixel với ảnh 32x32 đã lưu — xem
+     * debug-tool/reverse_engineer_crop.js): model này train trên ẢNH XÁM
+     * GỐC (KHÔNG threshold/nhị phân hoá), pad về hình vuông bằng NỀN TRẮNG
+     * (không phải đen), resize 32x32, chuẩn hoá (v/255 - 0.5) / 0.5, KHÔNG
+     * đảo ngược. Test trên 180 ảnh mẫu thật (15 ảnh/lớp) cho 100% đúng với
+     * đúng công thức này.
+     *
+     * Vẫn cần `binMat` (đã threshold) để tìm ĐÚNG vị trí ký tự (tightVerticalBounds)
+     * — việc "tìm chữ ở đâu" model không tự làm được — nhưng ảnh CUỐI CÙNG
+     * đưa vào model lấy từ `grayMat` (ảnh xám gốc), không phải binMat.
      */
-    function cropCharTo64(binMat, band, box) {
+    function cropCharForClassifier(grayMat, binMat, band, box) {
         const tightY = tightVerticalBounds(binMat, band, box);
         const rect = new cv.Rect(box.x0, tightY.y0, box.x1 - box.x0, tightY.y1 - tightY.y0);
-        const charMat = binMat.roi(rect);
+        const charMat = grayMat.roi(rect);
 
         const side = Math.max(charMat.rows, charMat.cols);
-        const pad = Math.round(side * 0.15); // biên đệm nhẹ giống cách train thường dùng
-        const squareSide = side + pad * 2;
-        const square = new cv.Mat.zeros(squareSide, squareSide, cv.CV_8UC1);
-        const xOff = Math.floor((squareSide - charMat.cols) / 2);
-        const yOff = Math.floor((squareSide - charMat.rows) / 2);
+        const square = new cv.Mat(side, side, cv.CV_8UC1, new cv.Scalar(255)); // nền trắng, khớp ảnh training
+        const xOff = Math.floor((side - charMat.cols) / 2);
+        const yOff = Math.floor((side - charMat.rows) / 2);
         const roiTarget = square.roi(new cv.Rect(xOff, yOff, charMat.cols, charMat.rows));
         charMat.copyTo(roiTarget);
         roiTarget.delete();
 
         const resized = new cv.Mat();
-        cv.resize(square, resized, new cv.Size(64, 64), 0, 0, cv.INTER_AREA);
+        cv.resize(square, resized, new cv.Size(32, 32), 0, 0, cv.INTER_AREA);
 
-        // ĐÃ XÁC NHẬN bằng test thực nghiệm (debug-tool/test_isolated_classify.js):
-        // model được train theo quy ước NỀN TRẮNG (giá trị cao) / CHỮ ĐEN (giá
-        // trị thấp) — giống ảnh chụp giấy thật — chứ KHÔNG PHẢI "nền đen/chữ
-        // trắng" như binMat của ta (text=255 trắng sau threshold+dedither).
-        // Phải đảo ngược (1 - v/255) thì model mới đọc đúng — nếu không, mọi
-        // ký tự đều bị đoán sai thành "." hoặc "%" với confidence cao (đã
-        // observe thực tế, không phải giả thuyết).
-        const out = new Float32Array(64 * 64);
-        for (let i = 0; i < out.length; i++) out[i] = 1 - resized.data[i] / 255;
+        const out = new Float32Array(32 * 32);
+        for (let i = 0; i < out.length; i++) out[i] = (resized.data[i] / 255 - 0.5) / 0.5;
 
         charMat.delete(); square.delete(); resized.delete();
         return out;
@@ -351,6 +359,7 @@ const ImageProcessing = (() => {
         thresholdAndDedither,
         segmentRows,
         segmentCharsIntoTokens,
-        cropCharTo64,
+        tightVerticalBounds,
+        cropCharForClassifier,
     };
 })();

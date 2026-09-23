@@ -94,7 +94,7 @@ const OcrEngine = (() => {
      */
     async function processFrame(frameCanvas, { tokenizeRows } = { tokenizeRows: false }) {
         const band = cropToGuideBand(frameCanvas);
-        const binMat = ImageProcessing.thresholdAndDedither(band);
+        const { binMat, grayMat } = ImageProcessing.thresholdAndDedither(band);
         try {
             const rowBands = ImageProcessing.segmentRows(binMat);
             if (rowBands.length === 0) return [];
@@ -111,7 +111,7 @@ const OcrEngine = (() => {
                 for (const token of tokens) {
                     const start = allCharImages.length;
                     for (const box of token) {
-                        allCharImages.push(ImageProcessing.cropCharTo64(binMat, rowBand, box));
+                        allCharImages.push(ImageProcessing.cropCharForClassifier(grayMat, binMat, rowBand, box));
                     }
                     tokenRanges.push({ start, end: allCharImages.length });
                 }
@@ -140,6 +140,7 @@ const OcrEngine = (() => {
             return rows;
         } finally {
             binMat.delete();
+            grayMat.delete();
         }
     }
 
