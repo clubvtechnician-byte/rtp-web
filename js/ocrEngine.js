@@ -15,7 +15,16 @@
  */
 
 const OcrEngine = (() => {
-    const TICK_INTERVAL_MS = 200;
+    // Giống CameraX STRATEGY_KEEP_ONLY_LATEST: không dùng tick cố định chờ hết
+    // 200ms mới xử lý tiếp (làm chậm giả tạo khi frame xử lý nhanh) — chỉ nghỉ
+    // 1 khoảng ngắn để nhường event loop (UI, camera decode) rồi lấy NGAY frame
+    // mới nhất hiện có xử lý tiếp. Tốc độ thực tế tự dao động theo độ phức tạp
+    // của từng frame, không bị ép cứng theo 1 nhịp cố định.
+    const TICK_IDLE_MS = 30;
+    // An toàn: nếu 1 frame nhiễu (loá/moiré) khiến tách ra quá nhiều "ký tự" giả,
+    // bỏ qua luôn thay vì tốn thời gian classify hàng trăm box rác — đây là
+    // nguyên nhân chính gây "đôi lúc rất chậm" (đã quan sát thực tế).
+    const MAX_CHARS_PER_FRAME = 120;
     // Camera điện thoại độ phân giải cao (>10MP) chụp cận màn hình LCD sẽ lộ
     // rõ từng điểm ảnh của màn hình (hiệu ứng moiré/lưới chấm dày đặc) — đã
     // xác nhận thực nghiệm điều này phá hỏng hoàn toàn threshold+segment nếu
@@ -99,31 +108,56 @@ const OcrEngine = (() => {
             const rowBands = ImageProcessing.segmentRows(binMat);
             if (rowBands.length === 0) return [];
 
+            // Tách token trước (rẻ, chỉ đếm pixel) để biết tổng số "ký tự" phát
+            // hiện được trước khi tốn công cắt/resize/classify từng cái. Frame
+            // nhiễu nặng (loá/moiré) có thể sinh ra hàng trăm box rác — đây là
+            // nguyên nhân chính gây chậm bất thường ở một số frame.
+            const rowTokens = rowBands.map((rowBand) => {
+                const gapForBreak = tokenizeRows ? 10 : 100000; // step1: không tách token trong dòng
+                return { rowBand, tokens: ImageProcessing.segmentCharsIntoTokens(binMat, rowBand, gapForBreak) };
+            });
+            const totalBoxes = rowTokens.reduce((s, r) => s + r.tokens.reduce((s2, t) => s2 + t.length, 0), 0);
+            if (totalBoxes > MAX_CHARS_PER_FRAME) return [];
+
             // Gom toàn bộ ký tự của mọi dòng lại để classify 1 lần (batch).
             const allCharImages = [];
-            // rowMeta[i] = { tokenRanges: [{start,end}] } chỉ số vào allCharImages
+            // rowMeta[i] = { tokenSlots: [ [{kind:'char',batchIndex}|{kind:'dot'}, ...], ... ] }
             const rowMeta = [];
 
-            for (const rowBand of rowBands) {
-                const gapForBreak = tokenizeRows ? 10 : 100000; // step1: không tách token trong dòng
-                const tokens = ImageProcessing.segmentCharsIntoTokens(binMat, rowBand, gapForBreak);
-                const tokenRanges = [];
+            for (const { rowBand, tokens } of rowTokens) {
+                const tokenSlots = [];
+
                 for (const token of tokens) {
-                    const start = allCharImages.length;
-                    for (const box of token) {
+                    // Model không có lớp dấu "." — đưa vào classifier sẽ bị đoán
+                    // nhầm thành 1 chữ số bất kỳ (đã xác nhận thực tế trên nhiều
+                    // ảnh thật: luôn lệch dấu thập phân). Nhận diện dấu chấm bằng
+                    // KÍCH THƯỚC thay vì model: dấu chấm luôn thấp hơn hẳn (~50%)
+                    // so với các ký tự số khác trong cùng token.
+                    const heights = token.map((box) => {
+                        const b = ImageProcessing.tightVerticalBounds(binMat, rowBand, box);
+                        return b.y1 - b.y0;
+                    });
+                    const sortedHeights = [...heights].sort((a, b) => a - b);
+                    const medianHeight = sortedHeights[Math.floor(sortedHeights.length / 2)] || 1;
+
+                    const slots = token.map((box, i) => {
+                        if (token.length > 1 && heights[i] < medianHeight * 0.5) {
+                            return { kind: 'dot' };
+                        }
+                        const batchIndex = allCharImages.length;
                         allCharImages.push(ImageProcessing.cropCharForClassifier(grayMat, binMat, rowBand, box));
-                    }
-                    tokenRanges.push({ start, end: allCharImages.length });
+                        return { kind: 'char', batchIndex };
+                    });
+                    tokenSlots.push(slots);
                 }
-                rowMeta.push({ tokenRanges });
+                rowMeta.push({ tokenSlots });
             }
 
-            if (allCharImages.length === 0) return [];
-            const classified = await DigitClassifier.classifyBatch(allCharImages);
+            const classified = allCharImages.length ? await DigitClassifier.classifyBatch(allCharImages) : [];
 
-            const rows = rowMeta.map(({ tokenRanges }) => {
-                const tokens = tokenRanges.map(({ start, end }) => {
-                    const chars = classified.slice(start, end);
+            const rows = rowMeta.map(({ tokenSlots }) => {
+                const tokens = tokenSlots.map((slots) => {
+                    const chars = slots.map((slot) => (slot.kind === 'dot' ? { char: '.', confidence: 1 } : classified[slot.batchIndex]));
                     const text = chars.map((c) => c.char).join('');
                     const meanConfidence = chars.length
                         ? chars.reduce((s, c) => s + c.confidence, 0) / chars.length
@@ -178,7 +212,7 @@ const OcrEngine = (() => {
             } catch (e) {
                 console.error('Lỗi xử lý khung hình', e);
             } finally {
-                if (running) loopHandle = setTimeout(tick, TICK_INTERVAL_MS);
+                if (running) loopHandle = setTimeout(tick, TICK_IDLE_MS);
             }
         };
         tick();
