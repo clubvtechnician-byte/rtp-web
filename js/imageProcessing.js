@@ -67,27 +67,6 @@ const ImageProcessing = (() => {
     function isReady() { return cvReady; }
 
     /**
-     * Threshold rẻ, dùng cho "live filter" hiển thị mượt trên liveview
-     * (không chạy dedither/segment nặng — chỉ để nhân viên thấy ảnh sạch
-     * hay nhiễu mà tự canh chỉnh).
-     * @param {HTMLCanvasElement} srcCanvas
-     * @param {HTMLCanvasElement} outCanvas vẽ kết quả ra đây
-     */
-    function liveThresholdPreview(srcCanvas, outCanvas) {
-        const src = cv.imread(srcCanvas);
-        const gray = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        const bin = new cv.Mat();
-        cv.adaptiveThreshold(
-            gray, bin, 255,
-            cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY,
-            21, 12
-        );
-        cv.imshow(outCanvas, bin);
-        src.delete(); gray.delete(); bin.delete();
-    }
-
-    /**
      * Threshold + dedither — dùng để TÁCH VỊ TRÍ dòng/ký tự (segmentRows,
      * segmentCharsIntoTokens, tightVerticalBounds), KHÔNG dùng làm ảnh đưa
      * vào model nữa (model mới train trên ảnh xám gốc, xem cropCharForClassifier).
@@ -378,7 +357,6 @@ const ImageProcessing = (() => {
     return {
         waitForOpenCv,
         isReady,
-        liveThresholdPreview,
         thresholdAndDedither,
         segmentRows,
         segmentCharsIntoTokens,

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>V Club Audit Scanner</title>
-    <link rel="stylesheet" href="css/style.css?v=6" />
+    <link rel="stylesheet" href="css/style.css?v=7" />
 </head>
 <body>
 
@@ -22,7 +22,6 @@
         <!-- NỬA TRÊN: CAMERA -->
         <div id="cameraContainer">
             <video id="video" playsinline autoplay muted></video>
-            <canvas id="liveFilterCanvas" hidden></canvas>
 
             <canvas id="captureCanvas" hidden></canvas>
 
@@ -40,11 +39,8 @@
                 <div id="headerInfo">
                     <div id="tvCsvFileName">—</div>
                     <div id="tvScannedCount">Đã quét: 0 máy</div>
-                    <div id="tvCloudStatus">☁ Firebase: chưa cấu hình</div>
+                    <div id="tvCloudStatus" title="☁ Firebase: chưa cấu hình">☁ Firebase: chưa cấu hình</div>
                 </div>
-                <label id="liveFilterToggle" title="Xem trước ảnh đã lọc nền (tuỳ chọn)">
-                    <input type="checkbox" id="chkLiveFilter" /> Bộ lọc
-                </label>
                 <label id="mgmdAnchorToggle" title="THỬ NGHIỆM: đổi mốc dò dòng RTP1/RTP2/Machine No từ ký tự &quot;$&quot; sang cụm &quot;MGMD&quot;. Đã kiểm chứng model dễ đọc nhầm mốc này — chỉ bật để so sánh trên ảnh thật, mặc định nên để tắt.">
                     <input type="checkbox" id="chkMgmdAnchor" /> Mốc MGMD (thử nghiệm)
                 </label>
@@ -61,7 +57,7 @@
             <div id="tvModelVersion" hidden></div>
 
             <button id="btnManualCapture" hidden>📸 Chụp tay</button>
-            <button id="btnCameraDiag">🔧 Chẩn đoán camera</button>
+            <button id="btnCameraDiag" title="Chẩn đoán camera">🔧</button>
 
             <div id="permissionOverlay" hidden>
                 <p>Ứng dụng cần quyền truy cập Camera để quét thông số máy.</p>
@@ -128,14 +124,14 @@
 
     <script src="js/firebaseConfig.js?v=4"></script>
     <script src="js/firebaseManager.js?v=4"></script>
-    <script src="js/imageProcessing.js?v=6"></script>
+    <script src="js/imageProcessing.js?v=7"></script>
     <script src="js/digitClassifier.js?v=6"></script>
     <script src="js/ocrParser.js?v=5"></script>
-    <script src="js/ocrEngine.js?v=8"></script>
+    <script src="js/ocrEngine.js?v=9"></script>
     <script src="js/csvManager.js?v=4"></script>
     <script src="js/cameraController.js?v=7"></script>
     <script src="js/dataView.js?v=4"></script>
     <script src="js/util.js?v=4"></script>
-    <script src="js/main.js?v=6"></script>
+    <script src="js/main.js?v=7"></script>
 </body>
 </html>

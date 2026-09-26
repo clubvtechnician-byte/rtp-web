@@ -88,16 +88,11 @@ body {
     overflow: hidden;
 }
 
-#video, #liveFilterCanvas {
+#video {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
-}
-
-#liveFilterCanvas {
-    position: absolute;
-    inset: 0;
 }
 
 #guideOverlay {
@@ -166,18 +161,19 @@ body {
     color: var(--text-secondary);
 }
 
-#tvCloudStatus.cloud-ok { color: #4caf50; }
-#tvCloudStatus.cloud-error { color: #ff8a65; }
-
-#liveFilterToggle {
-    flex-shrink: 0;
-    font-size: 11px;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    white-space: nowrap;
+/* Chưa cấu hình / đang kết nối / lỗi: vẫn hiện chữ đầy đủ — cần chú ý.
+   "đã kết nối" là trạng thái bình thường/mong đợi nhất, thu gọn thành 1
+   chấm xanh nhỏ để đỡ chiếm chỗ (chữ đầy đủ vẫn có trong title, xem main.js). */
+#tvCloudStatus.cloud-ok {
+    font-size: 0; /* ẩn chữ mà không dùng display:none (mất khỏi layout đột ngột) */
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4caf50;
+    vertical-align: middle;
 }
+#tvCloudStatus.cloud-error { color: #ff8a65; }
 
 /* Tuỳ chọn thử nghiệm — cố tình tô màu cảnh báo nhẹ để không bị lầm với
    các toggle bình thường khác (xem cảnh báo độ tin cậy trong ocrEngine.js). */
@@ -243,6 +239,14 @@ body {
     text-align: center;
     padding: 8px;
     font-size: 13px;
+}
+
+/* Chụp tay nhưng KHÔNG đọc được — phải khác hẳn màu thông báo thành công
+   mặc định, để nhân viên biết cần tự nhập tay chứ không phải máy đã đọc đúng. */
+#tvScanStatus.status-warn {
+    background: rgba(255, 152, 0, 0.9);
+    color: #1a1a1a;
+    font-weight: 600;
 }
 
 /* Dòng nhỏ ghi phiên bản model đang chạy — góc phải dưới khung camera,

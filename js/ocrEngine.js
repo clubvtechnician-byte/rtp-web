@@ -51,7 +51,6 @@ const OcrEngine = (() => {
     let running = false;
     let paused = false;
     let loopHandle = null;
-    let liveFilterEnabled = false;
     let useMgmdAnchor = false;
 
     const workCanvas = document.createElement('canvas');
@@ -61,8 +60,6 @@ const OcrEngine = (() => {
         await DigitClassifier.init();
     }
 
-    function setLiveFilterEnabled(value) { liveFilterEnabled = value; }
-    function isLiveFilterEnabled() { return liveFilterEnabled; }
     function setUseMgmdAnchor(value) { useMgmdAnchor = value; }
     function isUseMgmdAnchor() { return useMgmdAnchor; }
 
@@ -222,13 +219,10 @@ const OcrEngine = (() => {
      * @param {() => HTMLCanvasElement|null} getFrame
      * @param {() => 'step1'|'step2'} getStep
      * @param {(rows: any[], step: string) => void} onResult
-     * @param {(filteredCanvas: HTMLCanvasElement) => void} [onLiveFilterFrame] gọi mỗi lần có bản lọc live (nếu bật)
      */
-    function startLoop(getFrame, getStep, onResult, onLiveFilterFrame) {
+    function startLoop(getFrame, getStep, onResult) {
         running = true;
         paused = false;
-
-        const previewCanvas = document.createElement('canvas');
 
         const tick = async () => {
             if (!running) return;
@@ -237,14 +231,6 @@ const OcrEngine = (() => {
             try {
                 const frame = getFrame();
                 if (frame) {
-                    if (liveFilterEnabled && onLiveFilterFrame) {
-                        const band = cropToGuideBand(frame);
-                        previewCanvas.width = band.width;
-                        previewCanvas.height = band.height;
-                        ImageProcessing.liveThresholdPreview(band, previewCanvas);
-                        onLiveFilterFrame(previewCanvas);
-                    }
-
                     const step = getStep();
                     const rows = await processFrame(frame, { tokenizeRows: step === 'step2' });
                     if (!paused) onResult(rows, step);
@@ -264,7 +250,6 @@ const OcrEngine = (() => {
 
     return {
         init, startLoop, stopLoop, setPaused, isPaused,
-        setLiveFilterEnabled, isLiveFilterEnabled,
         setUseMgmdAnchor, isUseMgmdAnchor,
         processFrame,
     };

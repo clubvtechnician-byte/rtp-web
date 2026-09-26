@@ -27,8 +27,6 @@ const ScanStep = Object.freeze({
 
     // ---- Camera / scan ----
     const videoEl = $('video');
-    const liveFilterCanvas = $('liveFilterCanvas');
-    const chkLiveFilter = $('chkLiveFilter');
     const chkMgmdAnchor = $('chkMgmdAnchor');
     const tvModelVersion = $('tvModelVersion');
     const captureCanvas = $('captureCanvas');
@@ -129,8 +127,7 @@ const ScanStep = Object.freeze({
         OcrEngine.startLoop(
             () => CameraController.captureFrame(),
             () => (currentStep === ScanStep.STEP1_SCANNING ? 'step1' : 'step2'),
-            (rows, step) => handleOcrResult(rows, step),
-            (previewCanvas) => drawLiveFilter(previewCanvas)
+            (rows, step) => handleOcrResult(rows, step)
         );
     }
 
@@ -162,34 +159,35 @@ const ScanStep = Object.freeze({
         }
     }
 
-    function drawLiveFilter(previewCanvas) {
-        liveFilterCanvas.width = previewCanvas.width;
-        liveFilterCanvas.height = previewCanvas.height;
-        liveFilterCanvas.getContext('2d').drawImage(previewCanvas, 0, 0);
-    }
-
-    chkLiveFilter.addEventListener('change', () => {
-        const on = chkLiveFilter.checked;
-        OcrEngine.setLiveFilterEnabled(on);
-        liveFilterCanvas.hidden = !on;
-    });
-
     chkMgmdAnchor.addEventListener('change', () => {
         OcrEngine.setUseMgmdAnchor(chkMgmdAnchor.checked);
     });
 
     // ============================== ĐỒNG BỘ FIREBASE ==============================
 
+    /**
+     * Trạng thái "đã kết nối" (cloud-ok) thu gọn thành 1 chấm xanh qua CSS
+     * (xem #tvCloudStatus.cloud-ok) — chữ đầy đủ vẫn nằm trong `title` để
+     * xem lại khi cần (hover trên desktop, giữ lâu trên mobile), tránh chữ
+     * "Firebase: đã kết nối" chiếm chỗ/che layout mỗi lần kết nối thành công.
+     */
+    function setCloudStatus(text, className) {
+        tvCloudStatus.textContent = text;
+        tvCloudStatus.title = text;
+        tvCloudStatus.className = className || '';
+    }
+
     async function initFirebaseSync() {
         if (!FirebaseManager.isConfigured()) {
-            tvCloudStatus.textContent = '☁ Firebase: chưa cấu hình';
-            tvCloudStatus.className = '';
+            setCloudStatus('☁ Firebase: chưa cấu hình', '');
             return;
         }
-        tvCloudStatus.textContent = '☁ Đang kết nối Firebase…';
+        setCloudStatus('☁ Đang kết nối Firebase…', '');
         const ok = await FirebaseManager.init();
-        tvCloudStatus.textContent = ok ? '☁ Firebase: đã kết nối' : '⚠ Firebase lỗi kết nối (vẫn lưu CSV cục bộ bình thường)';
-        tvCloudStatus.className = ok ? 'cloud-ok' : 'cloud-error';
+        setCloudStatus(
+            ok ? '☁ Firebase: đã kết nối' : '⚠ Firebase lỗi kết nối (vẫn lưu CSV cục bộ bình thường)',
+            ok ? 'cloud-ok' : 'cloud-error'
+        );
     }
 
     // ============================== QUẢN LÝ PHIÊN ==============================
@@ -297,6 +295,8 @@ const ScanStep = Object.freeze({
                 freezePreview();
                 currentStep = ScanStep.STEP1_FROZEN;
                 updateStatusUi();
+                tvScanStatus.textContent = 'Không đọc được thông số — nhìn ảnh và nhập tay, rồi bấm Tiếp tục.';
+                tvScanStatus.className = 'status-warn';
             }
         } else if (currentStep === ScanStep.STEP2_SCANNING) {
             let result = null;
@@ -314,6 +314,8 @@ const ScanStep = Object.freeze({
                 freezePreview();
                 currentStep = ScanStep.STEP2_FROZEN;
                 updateStatusUi();
+                tvScanStatus.textContent = 'Không đọc được ngày Clear RAM — nhìn ảnh và nhập tay, rồi chọn tháng + bấm Xác nhận.';
+                tvScanStatus.className = 'status-warn';
             }
         }
     }
@@ -466,8 +468,10 @@ const ScanStep = Object.freeze({
 
         if (FirebaseManager.isReady()) {
             FirebaseManager.pushFieldReading(fieldReading).then((ok) => {
-                tvCloudStatus.textContent = ok ? '☁ Firebase: đã đồng bộ' : '⚠ Firebase: lỗi đồng bộ máy vừa lưu';
-                tvCloudStatus.className = ok ? 'cloud-ok' : 'cloud-error';
+                setCloudStatus(
+                    ok ? '☁ Firebase: đã đồng bộ' : '⚠ Firebase: lỗi đồng bộ máy vừa lưu',
+                    ok ? 'cloud-ok' : 'cloud-error'
+                );
             });
         }
 
@@ -546,6 +550,11 @@ const ScanStep = Object.freeze({
     function updateStatusUi() {
         const scanning = currentStep === ScanStep.STEP1_SCANNING || currentStep === ScanStep.STEP2_SCANNING;
         btnManualCapture.hidden = !scanning;
+        // Reset mỗi lần — nếu là ca "chụp tay nhưng không đọc được", nơi gọi
+        // hàm này sẽ tự ghi đè lại textContent/className NGAY SAU khi gọi
+        // updateStatusUi() (xem onManualCaptureClicked), để không lẫn với
+        // thông báo thành công mặc định của state STEP1_FROZEN/STEP2_FROZEN.
+        tvScanStatus.className = '';
 
         switch (currentStep) {
             case ScanStep.STEP1_SCANNING:
