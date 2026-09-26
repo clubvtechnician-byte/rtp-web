@@ -33,10 +33,26 @@ const OcrEngine = (() => {
     // lưới chấm) — không upscale nếu crop đã nhỏ hơn.
     const PROCESSING_TARGET_WIDTH = 700;
 
+    // Mốc mặc định là "$" (đã proven đáng tin trên ảnh thật). Có thêm tuỳ
+    // chọn thử nghiệm mốc "MGMD" (model 4.0 có lớp riêng cho nguyên cụm 4
+    // chữ này) — bật/tắt qua setUseMgmdAnchor(), xem checkbox trong UI.
+    //
+    // CẢNH BÁO đã kiểm chứng thực nghiệm: cách nhận NGUYÊN CỤM (crop gộp cả
+    // token rồi hỏi model "đây có phải MGMD không") KHÔNG đáng tin — model
+    // nhận nhầm bất kỳ token 4-box nào (kể cả số "1234", "2026", "0012")
+    // thành "mgmd" với độ tin cậy 100%, có vẻ chỉ phản ứng theo tỉ lệ khung
+    // ~4:1 của crop chứ không thực sự đọc nội dung bên trong. Tuỳ chọn này
+    // vẫn để lại cho mục đích thử nghiệm/so sánh trực tiếp trên ảnh thật
+    // (khác ảnh giả lập font Arial dùng để kiểm chứng ở trên), NHƯNG mặc
+    // định TẮT vì rủi ro đọc nhầm dòng neo → sai lệch toàn bộ RTP1/RTP2/
+    // Machine No mà vẫn hiện độ tin cậy cao (không có dấu hiệu cảnh báo).
+    const MGMD_CONFIDENCE_MIN = 0.75;
+
     let running = false;
     let paused = false;
     let loopHandle = null;
     let liveFilterEnabled = false;
+    let useMgmdAnchor = false;
 
     const workCanvas = document.createElement('canvas');
 
@@ -47,6 +63,8 @@ const OcrEngine = (() => {
 
     function setLiveFilterEnabled(value) { liveFilterEnabled = value; }
     function isLiveFilterEnabled() { return liveFilterEnabled; }
+    function setUseMgmdAnchor(value) { useMgmdAnchor = value; }
+    function isUseMgmdAnchor() { return useMgmdAnchor; }
 
     /**
      * Cắt frame về đúng vùng khung ngắm NGƯỜI DÙNG NHÌN THẤY trên màn hình.
@@ -126,6 +144,7 @@ const OcrEngine = (() => {
 
             for (const { rowBand, tokens } of rowTokens) {
                 const tokenSlots = [];
+                const tokenWholeIndex = []; // song song tokens: batchIndex crop NGUYÊN token (chỉ dùng khi useMgmdAnchor)
 
                 for (const token of tokens) {
                     // Model không có lớp dấu "." — đưa vào classifier sẽ bị đoán
@@ -149,20 +168,41 @@ const OcrEngine = (() => {
                         return { kind: 'char', batchIndex };
                     });
                     tokenSlots.push(slots);
+
+                    if (useMgmdAnchor) {
+                        // Crop nguyên cả token (gộp toàn bộ box thành 1 vùng) để
+                        // hỏi model "cả cụm này có phải MGMD không" — chỉ tính khi
+                        // người dùng chủ động bật tuỳ chọn thử nghiệm này (xem
+                        // cảnh báo độ tin cậy ở đầu file).
+                        const mergedBox = {
+                            x0: Math.min(...token.map((b) => b.x0)),
+                            x1: Math.max(...token.map((b) => b.x1)),
+                        };
+                        tokenWholeIndex.push(allCharImages.length);
+                        allCharImages.push(ImageProcessing.cropCharForClassifier(grayMat, binMat, rowBand, mergedBox));
+                    } else {
+                        tokenWholeIndex.push(-1);
+                    }
                 }
-                rowMeta.push({ tokenSlots });
+                rowMeta.push({ tokenSlots, tokenWholeIndex });
             }
 
             const classified = allCharImages.length ? await DigitClassifier.classifyBatch(allCharImages) : [];
 
-            const rows = rowMeta.map(({ tokenSlots }) => {
-                const tokens = tokenSlots.map((slots) => {
+            const rows = rowMeta.map(({ tokenSlots, tokenWholeIndex }) => {
+                const tokens = tokenSlots.map((slots, tIdx) => {
                     const chars = slots.map((slot) => (slot.kind === 'dot' ? { char: '.', confidence: 1 } : classified[slot.batchIndex]));
                     const text = chars.map((c) => c.char).join('');
                     const meanConfidence = chars.length
                         ? chars.reduce((s, c) => s + c.confidence, 0) / chars.length
                         : 0;
-                    return { text, meanConfidence };
+                    // mgmdMatch: kết quả nhận diện NGUYÊN CỤM token này (chỉ có khi
+                    // useMgmdAnchor bật) — KHÔNG ghi đè text/meanConfidence, để
+                    // OcrParser tự quyết định dùng mốc nào (xem tuỳ chọn ở UI).
+                    const wholeResult = tokenWholeIndex[tIdx] >= 0 ? classified[tokenWholeIndex[tIdx]] : null;
+                    const mgmdMatch = wholeResult && wholeResult.char === 'MGMD' && wholeResult.confidence >= MGMD_CONFIDENCE_MIN
+                        ? wholeResult : null;
+                    return { text, meanConfidence, mgmdMatch };
                 });
                 const text = tokens.map((t) => t.text).join('');
                 const meanConfidence = tokens.length
@@ -225,6 +265,7 @@ const OcrEngine = (() => {
     return {
         init, startLoop, stopLoop, setPaused, isPaused,
         setLiveFilterEnabled, isLiveFilterEnabled,
+        setUseMgmdAnchor, isUseMgmdAnchor,
         processFrame,
     };
 })();

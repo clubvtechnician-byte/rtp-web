@@ -29,6 +29,8 @@ const ScanStep = Object.freeze({
     const videoEl = $('video');
     const liveFilterCanvas = $('liveFilterCanvas');
     const chkLiveFilter = $('chkLiveFilter');
+    const chkMgmdAnchor = $('chkMgmdAnchor');
+    const tvModelVersion = $('tvModelVersion');
     const captureCanvas = $('captureCanvas');
     const frozenImg = $('frozenFrameImage');
     const frozenBorder = $('frozenBorder');
@@ -145,6 +147,11 @@ const ScanStep = Object.freeze({
         try {
             await OcrEngine.init();
             loadingOverlay.hidden = true;
+            const modelName = DigitClassifier.getModelName();
+            if (modelName) {
+                tvModelVersion.textContent = modelName;
+                tvModelVersion.hidden = false;
+            }
             return true;
         } catch (e) {
             console.error('Không thể khởi tạo bộ máy nhận diện', e);
@@ -165,6 +172,10 @@ const ScanStep = Object.freeze({
         const on = chkLiveFilter.checked;
         OcrEngine.setLiveFilterEnabled(on);
         liveFilterCanvas.hidden = !on;
+    });
+
+    chkMgmdAnchor.addEventListener('change', () => {
+        OcrEngine.setUseMgmdAnchor(chkMgmdAnchor.checked);
     });
 
     // ============================== ĐỒNG BỘ FIREBASE ==============================
@@ -229,7 +240,7 @@ const ScanStep = Object.freeze({
     function handleOcrResult(rows, step) {
         logRecognizedRows(step, rows);
         if (step === 'step1' && currentStep === ScanStep.STEP1_SCANNING) {
-            const result = OcrParser.parseStep1(rows);
+            const result = OcrParser.parseStep1(rows, { useMgmdAnchor: chkMgmdAnchor.checked });
             if (result && result.allValid) onStep1Captured(result);
         } else if (step === 'step2' && currentStep === ScanStep.STEP2_SCANNING) {
             for (const row of rows) {
@@ -278,7 +289,7 @@ const ScanStep = Object.freeze({
             try {
                 const rows = await OcrEngine.processFrame(frame, { tokenizeRows: false });
                 logRecognizedRows('step1-manual', rows);
-                result = OcrParser.parseStep1(rows);
+                result = OcrParser.parseStep1(rows, { useMgmdAnchor: chkMgmdAnchor.checked });
             } catch (e) { console.error('Lỗi nhận diện khi chụp tay', e); }
             if (result && result.allValid) {
                 onStep1Captured(result);

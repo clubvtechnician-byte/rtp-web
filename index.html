@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>V Club Audit Scanner</title>
-    <link rel="stylesheet" href="css/style.css?v=5" />
+    <link rel="stylesheet" href="css/style.css?v=6" />
 </head>
 <body>
 
@@ -45,6 +45,9 @@
                 <label id="liveFilterToggle" title="Xem trước ảnh đã lọc nền (tuỳ chọn)">
                     <input type="checkbox" id="chkLiveFilter" /> Bộ lọc
                 </label>
+                <label id="mgmdAnchorToggle" title="THỬ NGHIỆM: đổi mốc dò dòng RTP1/RTP2/Machine No từ ký tự &quot;$&quot; sang cụm &quot;MGMD&quot;. Đã kiểm chứng model dễ đọc nhầm mốc này — chỉ bật để so sánh trên ảnh thật, mặc định nên để tắt.">
+                    <input type="checkbox" id="chkMgmdAnchor" /> Mốc MGMD (thử nghiệm)
+                </label>
                 <button id="btnEndSession">🛑 Kết thúc phiên</button>
             </div>
 
@@ -53,6 +56,9 @@
             <div id="badgeMachineNumber" hidden></div>
 
             <div id="tvScanStatus">Đang khởi tạo camera…</div>
+
+            <!-- Dòng nhỏ ghi phiên bản model đang chạy (đọc từ classes.json, xem digitClassifier.js) -->
+            <div id="tvModelVersion" hidden></div>
 
             <button id="btnManualCapture" hidden>📸 Chụp tay</button>
             <button id="btnCameraDiag">🔧 Chẩn đoán camera</button>
@@ -122,14 +128,14 @@
 
     <script src="js/firebaseConfig.js?v=4"></script>
     <script src="js/firebaseManager.js?v=4"></script>
-    <script src="js/imageProcessing.js?v=5"></script>
-    <script src="js/digitClassifier.js?v=5"></script>
-    <script src="js/ocrParser.js?v=4"></script>
-    <script src="js/ocrEngine.js?v=7"></script>
+    <script src="js/imageProcessing.js?v=6"></script>
+    <script src="js/digitClassifier.js?v=6"></script>
+    <script src="js/ocrParser.js?v=5"></script>
+    <script src="js/ocrEngine.js?v=8"></script>
     <script src="js/csvManager.js?v=4"></script>
     <script src="js/cameraController.js?v=7"></script>
     <script src="js/dataView.js?v=4"></script>
     <script src="js/util.js?v=4"></script>
-    <script src="js/main.js?v=5"></script>
+    <script src="js/main.js?v=6"></script>
 </body>
 </html>

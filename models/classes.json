@@ -1,4 +1,5 @@
 {
+  "model_name": "Model 4.0 (13 Classes: 0-9, $, %, MGMD)",
   "classes": [
     "0",
     "1",
@@ -11,29 +12,23 @@
     "8",
     "9",
     "dollar",
-    "percent"
+    "percent",
+    "mgmd"
   ],
   "label_display_map": {
     "dollar": "$",
-    "percent": "%"
+    "percent": "%",
+    "mgmd": "MGMD"
   },
-  "num_classes": 12,
+  "num_classes": 13,
   "input_shape": [
     1,
     1,
     32,
-    32
+    128
   ],
-  "normalization": {
-    "mean": [
-      0.5
-    ],
-    "std": [
-      0.5
-    ]
-  },
-  "best_epoch": 5,
-  "best_val_accuracy": 0.9971537001897534,
+  "best_epoch": 1,
+  "best_val_accuracy": 0.9973498233215548,
   "dataset_statistics": {
     "0": 602,
     "1": 1217,
@@ -45,7 +40,8 @@
     "7": 215,
     "8": 489,
     "9": 506,
-    "dollar": 476,
-    "percent": 96
+    "dollar": 474,
+    "percent": 509,
+    "mgmd": 112
   }
 }

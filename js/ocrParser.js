@@ -4,10 +4,21 @@
  * Bóc tách dữ liệu từ kết quả đã nhận diện theo DÒNG/TOKEN (không còn dùng
  * regex trên text OCR tổng quát như bản Tesseract cũ).
  *
- * BƯỚC 1 (màn Audit) — anchor-relative theo ký tự "$" (đã validate trên
- * ảnh thật): dòng chứa "$" làm mốc → mốc-1 = Machine No, mốc-2 = RTP2,
- * mốc-3 = RTP1. Không tìm được dòng "$" → coi như thất bại toàn bộ, đẩy
- * qua xác nhận tay.
+ * BƯỚC 1 (màn Audit) — mặc định anchor-relative theo ký tự "$" (đã
+ * validate trên ảnh thật): dòng chứa "$" làm mốc → mốc-1 = Machine No,
+ * mốc-2 = RTP2, mốc-3 = RTP1. Không tìm được dòng "$" → coi như thất bại
+ * toàn bộ, đẩy qua xác nhận tay.
+ *
+ * Có thêm tuỳ chọn thử nghiệm `useMgmdAnchor` — đổi mốc sang cụm "MGMD"
+ * (model 4.0 có lớp riêng cho nguyên cụm 4 chữ này, luôn nằm đúng 1 dòng
+ * dưới dòng "$0.01" → mốc-1=denom (bỏ qua), mốc-2=Machine No, mốc-3=RTP2,
+ * mốc-4=RTP1 — về vị trí trỏ ĐÚNG CÙNG 3 dòng với mốc "$").
+ * ⚠️ ĐÃ KIỂM CHỨNG THỰC NGHIỆM: model KHÔNG phân biệt được "MGMD" thật với
+ * bất kỳ token 4-box nào khác (số "1234", "2026", "0012" đều bị nhận nhầm
+ * thành "mgmd" 100%, có vẻ chỉ phản ứng theo tỉ lệ khung ~4:1 của crop,
+ * không thực sự đọc nội dung). Tuỳ chọn này để lại phục vụ thử nghiệm/so
+ * sánh trực tiếp trên ảnh thật, mặc định TẮT — bật lên có rủi ro đọc nhầm
+ * dòng neo mà vẫn hiện độ tin cậy cao, không có dấu hiệu cảnh báo.
  *
  * BƯỚC 2 (màn ngày) — chỉ đọc NGÀY + NĂM bằng model số (model tháng chưa
  * có, để Giai đoạn 2). Trong dòng ngày có nhiều token xen lẫn chữ (thứ,
@@ -48,21 +59,33 @@ const OcrParser = (() => {
 
     /**
      * @param {{text: string, meanConfidence: number}[]} rows danh sách dòng đã nhận diện, thứ tự trên->dưới
+     * @param {{useMgmdAnchor?: boolean}} [opts] bật để dùng mốc "MGMD" thử nghiệm thay vì "$" (xem cảnh báo ở đầu file)
      * @returns {null | {
      *   machineNo: number, rtp1: number, rtp2: number,
      *   confidence: {machineNo:number, rtp1:number, rtp2:number},
      *   autoCorrected: {rtp1:boolean, rtp2:boolean}
      * }}
      */
-    function parseStep1(rows) {
+    function parseStep1(rows, opts) {
         if (!rows || rows.length === 0) return null;
+        const useMgmdAnchor = !!(opts && opts.useMgmdAnchor);
 
-        const dollarIdx = rows.findIndex((r) => r.text.includes('$'));
-        if (dollarIdx < 3) return null; // không đủ 3 dòng phía trên mốc
+        let machineRow, rtp2Row, rtp1Row;
 
-        const machineRow = rows[dollarIdx - 1];
-        const rtp2Row = rows[dollarIdx - 2];
-        const rtp1Row = rows[dollarIdx - 3];
+        if (useMgmdAnchor) {
+            const mgmdIdx = rows.findIndex((r) => r.tokens.some((t) => t.mgmdMatch));
+            if (mgmdIdx < 4) return null; // không đủ 4 dòng phía trên mốc
+            // mgmdIdx - 1 = denom, không dùng
+            machineRow = rows[mgmdIdx - 2];
+            rtp2Row = rows[mgmdIdx - 3];
+            rtp1Row = rows[mgmdIdx - 4];
+        } else {
+            const dollarIdx = rows.findIndex((r) => r.text.includes('$'));
+            if (dollarIdx < 3) return null; // không đủ 3 dòng phía trên mốc
+            machineRow = rows[dollarIdx - 1];
+            rtp2Row = rows[dollarIdx - 2];
+            rtp1Row = rows[dollarIdx - 3];
+        }
 
         const machineDigits = machineRow.text.replace(/[^0-9]/g, '');
         if (!machineDigits) return null;

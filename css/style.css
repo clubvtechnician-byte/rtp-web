@@ -179,6 +179,18 @@ body {
     white-space: nowrap;
 }
 
+/* Tuỳ chọn thử nghiệm — cố tình tô màu cảnh báo nhẹ để không bị lầm với
+   các toggle bình thường khác (xem cảnh báo độ tin cậy trong ocrEngine.js). */
+#mgmdAnchorToggle {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: #ffb74d;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
 #btnEndSession {
     flex-shrink: 0;
     background: var(--danger);
@@ -231,6 +243,19 @@ body {
     text-align: center;
     padding: 8px;
     font-size: 13px;
+}
+
+/* Dòng nhỏ ghi phiên bản model đang chạy — góc phải dưới khung camera,
+   đọc từ classes.json (xem digitClassifier.js), không hardcode. */
+#tvModelVersion {
+    position: absolute;
+    right: 8px;
+    bottom: 6px;
+    z-index: 3;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 9px;
+    pointer-events: none;
+    white-space: nowrap;
 }
 
 #btnCameraDiag {

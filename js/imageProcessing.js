@@ -315,41 +315,64 @@ const ImageProcessing = (() => {
     }
 
     /**
-     * Crop 1 ký tự để đưa vào model mới (`digit_model.onnx`, 32x32).
+     * Crop 1 ký tự để đưa vào model "Model 4.0" (`digit_model.onnx`, 13 lớp:
+     * 0-9, $, %, mgmd — lớp "mgmd" không dùng tới, xem ghi chú ở ocrParser.js
+     * về việc đã thử rồi bỏ ý tưởng nhận diện nguyên cụm "MGMD" làm mốc neo).
+     * Khung đích giờ là 128x32 (DẸT NGANG), không còn 32x32 vuông như bản cũ.
      *
-     * ĐÃ XÁC NHẬN bằng cách đối chiếu trực tiếp với ảnh training thật (crop
-     * theo manifest.csv, so khớp pixel với ảnh 32x32 đã lưu — xem
-     * debug-tool/reverse_engineer_crop.js): model này train trên ẢNH XÁM
-     * GỐC (KHÔNG threshold/nhị phân hoá), pad về hình vuông bằng NỀN TRẮNG
-     * (không phải đen), resize 32x32, chuẩn hoá (v/255 - 0.5) / 0.5, KHÔNG
-     * đảo ngược. Test trên 180 ảnh mẫu thật (15 ảnh/lớp) cho 100% đúng với
-     * đúng công thức này.
+     * Nguồn ảnh vẫn lấy từ `grayMat` (ảnh xám gốc, không threshold), `binMat`
+     * chỉ dùng để tìm ĐÚNG vị trí ký tự (tightVerticalBounds) — việc "tìm
+     * chữ ở đâu" model không tự làm được.
      *
-     * Vẫn cần `binMat` (đã threshold) để tìm ĐÚNG vị trí ký tự (tightVerticalBounds)
-     * — việc "tìm chữ ở đâu" model không tự làm được — nhưng ảnh CUỐI CÙNG
-     * đưa vào model lấy từ `grayMat` (ảnh xám gốc), không phải binMat.
+     * Chuẩn hoá GIỮ NGUYÊN công thức bản cũ: (v/255 - 0.5) / 0.5 — xác nhận
+     * qua classes.json bản cũ ghi rõ normalization mean/std=0.5, và số mẫu
+     * train mỗi lớp digit 0-9 giống hệt bản cũ (cùng pipeline train gốc,
+     * bản mới chỉ đổi khung + thêm lớp mgmd).
      */
-    function cropCharForClassifier(grayMat, binMat, band, box) {
-        const tightY = tightVerticalBounds(binMat, band, box);
-        const rect = new cv.Rect(box.x0, tightY.y0, box.x1 - box.x0, tightY.y1 - tightY.y0);
+    const CLS_INPUT_W = 128;
+    const CLS_INPUT_H = 32;
+
+    /**
+     * ĐÃ THỬ resize KÉO GIÃN THẲNG (stretch) về 128x32 trước — kiểm chứng
+     * thực nghiệm bằng cách chạy thử model trên nhiều chuỗi giả lập: 1 ký tự
+     * đơn lẻ (hẹp) bị kéo giãn ngang méo hẳn tỉ lệ, model đoán sai gần như
+     * luôn ra lớp "mgmd" (chỉ "MGMD" thật — vốn dĩ đã có tỉ lệ ~4:1 gần
+     * khớp 128x32 — mới sống sót qua kiểu resize này).
+     * → Đổi sang LETTERBOX: giữ nguyên tỉ lệ gốc, scale để vừa khít trong
+     * 128x32 (không méo), rồi dán vào GIỮA canvas nền TRẮNG 128x32 (khớp
+     * quy ước nền trắng của bản model cũ). Không stretch, không threshold,
+     * không đảo màu.
+     */
+    function _cropRectAndNormalize(grayMat, rect) {
         const charMat = grayMat.roi(rect);
 
-        const side = Math.max(charMat.rows, charMat.cols);
-        const square = new cv.Mat(side, side, cv.CV_8UC1, new cv.Scalar(255)); // nền trắng, khớp ảnh training
-        const xOff = Math.floor((side - charMat.cols) / 2);
-        const yOff = Math.floor((side - charMat.rows) / 2);
-        const roiTarget = square.roi(new cv.Rect(xOff, yOff, charMat.cols, charMat.rows));
-        charMat.copyTo(roiTarget);
+        const scale = Math.min(CLS_INPUT_W / charMat.cols, CLS_INPUT_H / charMat.rows);
+        const newW = Math.max(1, Math.round(charMat.cols * scale));
+        const newH = Math.max(1, Math.round(charMat.rows * scale));
+
+        const resizedChar = new cv.Mat();
+        cv.resize(charMat, resizedChar, new cv.Size(newW, newH), 0, 0, cv.INTER_LINEAR);
+
+        const canvas128 = new cv.Mat(CLS_INPUT_H, CLS_INPUT_W, cv.CV_8UC1, new cv.Scalar(255));
+        const xOff = Math.floor((CLS_INPUT_W - newW) / 2);
+        const yOff = Math.floor((CLS_INPUT_H - newH) / 2);
+        const roiTarget = canvas128.roi(new cv.Rect(xOff, yOff, newW, newH));
+        resizedChar.copyTo(roiTarget);
         roiTarget.delete();
 
-        const resized = new cv.Mat();
-        cv.resize(square, resized, new cv.Size(32, 32), 0, 0, cv.INTER_AREA);
+        const out = new Float32Array(CLS_INPUT_W * CLS_INPUT_H);
+        for (let i = 0; i < out.length; i++) out[i] = (canvas128.data[i] / 255 - 0.5) / 0.5;
 
-        const out = new Float32Array(32 * 32);
-        for (let i = 0; i < out.length; i++) out[i] = (resized.data[i] / 255 - 0.5) / 0.5;
-
-        charMat.delete(); square.delete(); resized.delete();
+        charMat.delete(); resizedChar.delete(); canvas128.delete();
         return out;
+    }
+
+    function cropCharForClassifier(grayMat, binMat, band, box) {
+        const tightY = tightVerticalBounds(binMat, band, box);
+        const w = Math.max(1, box.x1 - box.x0);
+        const h = Math.max(1, tightY.y1 - tightY.y0);
+        const rect = new cv.Rect(box.x0, tightY.y0, w, h);
+        return _cropRectAndNormalize(grayMat, rect);
     }
 
     return {
