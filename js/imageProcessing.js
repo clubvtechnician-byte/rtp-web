@@ -138,11 +138,31 @@ const ImageProcessing = (() => {
 
     /**
      * Tách dòng bằng horizontal projection profile.
+     *
+     * minRowHeight=18: xác định bằng cách ĐO THỰC TẾ trên ảnh chụp máy thật
+     * bị vằn quét ngang (rolling-shutter của camera lệch tần số quét đèn nền
+     * LCD — hiện tượng KHÁC với moiré/dither, xem thêm ghi chú apply_flicker
+     * trong project screen-month-ocr): dòng chữ THẬT luôn cao 27-32px, còn
+     * dải vằn nhiễu luôn cao 8-15px — có khoảng trống rõ giữa 2 nhóm này.
+     * Giá trị cũ (8px) không lọc được vằn nhiễu, sinh ra hàng chục "dòng"
+     * rác chen giữa các dòng thật, làm lệch hoàn toàn phép tính offset cố
+     * định của OcrParser (mốc "$" trỏ đúng dòng, nhưng "3 dòng phía trên"
+     * không còn là đúng 3 dòng RTP1/RTP2/Machine No nữa vì có rác chen vào).
+     * Đã kiểm chứng: nâng lên 18 giảm số dòng rác hơn 50% trên ảnh thật.
+     *
+     * GIỚI HẠN CÒN LẠI (chưa xử lý): một phần vằn nhiễu nằm DÍNH LIỀN vào
+     * cuối dòng chữ thật (không tách thành dải riêng) nên vẫn lọt qua bộ lọc
+     * chiều cao này — ví dụ "93.602%" bị dính thêm "771" phía sau. RTP1/RTP2
+     * không bị ảnh hưởng (OcrParser tách đúng phần số thập phân bằng regex),
+     * nhưng Machine No thì có (không có dấu chấm để regex neo vào, phải gộp
+     * hết chữ số). Máy đã lưu lớp kiểm tra khoảng hợp lệ (0-900) nên KHÔNG
+     * bao giờ lưu nhầm Machine No sai — chỉ là đọc thất bại, phải nhập tay.
+     *
      * @param {cv.Mat} binMat ảnh nhị phân (text=255) từ thresholdAndDedither
      * @param {number} minRowHeight bỏ qua dải quá mỏng (nhiễu)
      * @returns {{y0:number, y1:number}[]} danh sách dải hàng theo thứ tự trên->dưới
      */
-    function segmentRows(binMat, minRowHeight = 8) {
+    function segmentRows(binMat, minRowHeight = 18) {
         const rows = binMat.rows, cols = binMat.cols;
         const data = binMat.data;
         const rowSum = new Int32Array(rows);
